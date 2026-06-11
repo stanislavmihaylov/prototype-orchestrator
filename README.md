@@ -104,7 +104,7 @@ make orchestrator-setup
 
 # Windows (PowerShell)
 git submodule update --init
-.\orchestrator\setup.ps1
+.\prototype-orchestrator\setup.ps1
 ```
 
 Then create your local config:
@@ -262,7 +262,7 @@ Changes to agents, skills, pipeline logic, or the dashboard belong in the orches
 
 ```bash
 # Work inside the submodule
-cd orchestrator
+cd prototype-orchestrator
 git checkout -b fix/my-change
 
 # Make changes, commit, push
@@ -273,9 +273,9 @@ git push origin fix/my-change
 # Open a PR in the orchestrator repo and merge it
 # Then back in the consuming project, update the pin:
 cd ..
-git submodule update --remote orchestrator
-git add orchestrator
-git commit -m "chore: update orchestrator submodule"
+git submodule update --remote prototype-orchestrator
+git add prototype-orchestrator
+git commit -m "chore: update prototype-orchestrator submodule"
 git push
 ```
 
