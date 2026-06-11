@@ -49,13 +49,33 @@ git submodule update --init
 
 Add these targets and extend your existing `setup` target:
 
+
+# UNIX
 ```makefile
 # ─── Pipeline ─────────────────────────────────────────────────────────────────
 orchestrator-setup:
 	git submodule update --init
-      # unix
 	sh prototype-orchestrator/setup.sh 
-      # windows
+
+pipeline-install:
+	cd prototype-orchestrator && npm install
+
+pipeline-start:
+	@test -n "$(FEATURE)" || (echo "Usage: make pipeline-start FEATURE=\"<flow name>\" [SCOPE=backend|mobile|both]"; exit 1)
+	cd prototype-orchestrator && npm run pipeline -- start "$(FEATURE)" $(if $(SCOPE),--scope $(SCOPE),)
+
+pipeline-resume:
+	@test -n "$(THREAD)" || (echo "Usage: make pipeline-resume THREAD=<threadId>"; exit 1)
+	cd prototype-orchestrator && npm run pipeline -- resume "$(THREAD)"
+
+pipeline-dashboard:
+	docker compose -f prototype-orchestrator/docker-compose.yml up --build
+```
+# Windows
+```makefile
+# ─── Pipeline ─────────────────────────────────────────────────────────────────
+orchestrator-setup:
+	git submodule update --init
       .\prototype-orchestrator\setup.ps1
 
 pipeline-install:
@@ -72,7 +92,6 @@ pipeline-resume:
 pipeline-dashboard:
 	docker compose -f prototype-orchestrator/docker-compose.yml up --build
 ```
-
 
 ### 2. Runtime data directory
 
@@ -302,13 +321,11 @@ For Office 365: `SMTP_HOST=smtp.office365.com`, `SMTP_PORT=587`.
 | Agent | Default model |
 |---|---|
 | `design-analyst-flow` | Sonnet |
-| `plan-feature` | Sonnet |
+| `plan-feature` | Opus |
 | `feature-implementation-backend` | Sonnet |
 | `feature-implementation-frontend` | Sonnet |
 | `test-runner` | Sonnet |
 | `reviewer` | Opus |
-| `environment-checker` | Haiku |
-| `pr-manager` | Haiku |
 | All on-demand agents | Sonnet |
 
 Override any assignment in `prototype-orchestrator/pipeline.config.json`.
