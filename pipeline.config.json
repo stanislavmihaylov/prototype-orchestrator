@@ -1,0 +1,22 @@
+{
+  "agents": {
+    "design-analyst-flow": {
+      "model": "claude-sonnet-4-6"
+    },
+    "plan-feature": {
+      "model": "claude-opus-4-8"
+    },
+    "feature-implementation-backend": {
+      "model": "claude-sonnet-4-6"
+    },
+    "feature-implementation-frontend": {
+      "model": "claude-sonnet-4-6"
+    },
+    "test-runner": {
+      "model": "claude-sonnet-4-6"
+    },
+    "reviewer": {
+      "model": "claude-opus-4-8"
+    }
+  }
+}

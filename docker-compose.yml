@@ -1,0 +1,14 @@
+services:
+  dashboard:
+    build: .
+    ports:
+      - "${PIPELINE_DASHBOARD_PORT:-4242}:4242"
+    environment:
+      # Inside the container the data dir resolves relative to /workspace/orchestrator
+      PIPELINE_DATA_DIR: "/workspace/orchestrator_logs"
+    volumes:
+      - ../orchestrator_logs:/workspace/orchestrator_logs
+      - ../.claude:/workspace/.claude
+    env_file:
+      - .env
+    restart: unless-stopped

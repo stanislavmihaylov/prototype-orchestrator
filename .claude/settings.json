@@ -1,0 +1,29 @@
+{
+    "permissions": {
+    "allow": [
+      "Bash(open -a Docker)",
+      "Bash(docker compose up -d postgres)",
+      "Bash(docker compose up -d *)",
+      "Bash(docker info)",
+      "Bash(docker ps*)",
+      "Edit(.claude/agents/**)",
+      "Bash(sed -i '' 's/^model: claude-sonnet-4-6$/model: claude-haiku-4-5-20251001/' environment-checker.md types-sync.md pr-manager.md)",
+      "Bash(sed -i '' 's/^model: claude-opus-4-6$/model: claude-sonnet-4-6/' design-discovery.md)",
+      "Bash(sed -i '' 's/^model: claude-sonnet-4-6$/model: claude-opus-4-6/' test-case-generator.md)",
+      "Bash(mkdir -p /Applications/Projects/recovery-companion/.claude/skills)",
+      "Bash(mv /Applications/Projects/recovery-companion/.github/skills/__TRACKED_VAR__ /Applications/Projects/recovery-companion/.claude/skills/__TRACKED_VAR__)",
+      "Bash(git -C /Applications/Projects/recovery-companion diff --name-only HEAD)",
+      "Bash(git -C /Applications/Projects/recovery-companion status --short)",
+      "Bash(mkdir -p /Applications/Projects/recovery-companion/.claude/orchestrator)",
+      "Bash(mv /Applications/Projects/recovery-companion/orchestrator/__init__.py /Applications/Projects/recovery-companion/orchestrator/agents.py /Applications/Projects/recovery-companion/orchestrator/notifications.py /Applications/Projects/recovery-companion/orchestrator/pipeline.py /Applications/Projects/recovery-companion/orchestrator/requirements.txt /Applications/Projects/recovery-companion/orchestrator/state.py /Applications/Projects/recovery-companion/.claude/orchestrator/)",
+      "Bash(git ls-tree *)",
+      "Edit(.claude/agents/*)",
+      "Bash(pg_isready *)",
+      "Bash(docker compose ps *)",
+      "Bash(docker compose ps)",
+      "Bash(colima status *)",
+      "Bash(pnpm --version *)",
+      "Bash(pnpm --version)"
+    ]
+  }
+}

@@ -1,0 +1,1083 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pipeline Dashboard</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:        #0f172a;
+  --surface:   #1e293b;
+  --surface2:  #263348;
+  --border:    #334155;
+  --text:      #e2e8f0;
+  --muted:     #94a3b8;
+  --success:   #22c55e;
+  --failed:    #ef4444;
+  --running:   #f59e0b;
+  --waiting:   #6366f1;
+  --done:      #22c55e;
+  --aborted:   #64748b;
+  --cache:     #38bdf8;
+  --output:    #a78bfa;
+  --interrupt: #f59e0b;
+  --primary:   #6366f1;
+}
+
+body {
+  background: var(--bg); color: var(--text);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-size: 14px; line-height: 1.5;
+  height: 100vh; display: flex; flex-direction: column;
+}
+
+/* ── Header ── */
+header {
+  background: var(--surface); border-bottom: 1px solid var(--border);
+  padding: 10px 20px; display: flex; align-items: center; gap: 12px; flex-shrink: 0;
+}
+header h1 { font-size: 15px; font-weight: 600; letter-spacing: 0.02em; }
+.header-spacer { flex: 1; }
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 14px; border-radius: 6px; font-size: 12px; font-weight: 600;
+  cursor: pointer; border: none; transition: background 0.15s, opacity 0.15s;
+}
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-primary { background: var(--primary); color: #fff; }
+.btn-primary:hover:not(:disabled) { background: #4f46e5; }
+.btn-ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+.btn-ghost:hover { background: var(--surface2); color: var(--text); }
+.btn-success { background: var(--success); color: #fff; }
+.btn-success:hover:not(:disabled) { background: #16a34a; }
+.btn-danger { background: color-mix(in srgb, var(--failed) 15%, var(--surface)); color: var(--failed); border: 1px solid color-mix(in srgb, var(--failed) 30%, transparent); }
+.btn-danger:hover:not(:disabled) { background: color-mix(in srgb, var(--failed) 25%, var(--surface)); }
+.btn-warning { background: color-mix(in srgb, var(--interrupt) 20%, var(--surface)); color: var(--interrupt); border: 1px solid color-mix(in srgb, var(--interrupt) 40%, transparent); }
+.btn-warning:hover:not(:disabled) { background: color-mix(in srgb, var(--interrupt) 30%, var(--surface)); }
+.nav-btn {
+  padding: 5px 12px; border-radius: 6px; border: 1px solid var(--border);
+  background: transparent; color: var(--muted); font-size: 12px; font-weight: 500;
+  cursor: pointer; transition: background 0.15s, color 0.15s;
+}
+.nav-btn:hover { background: var(--surface2); color: var(--text); }
+.nav-btn.active { background: var(--surface2); color: var(--text); border-color: var(--primary); }
+
+/* ── Connection indicator ── */
+.conn-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--aborted); transition: background 0.3s; }
+.conn-dot.live { background: var(--success); animation: pulse 2s infinite; }
+.conn-label { font-size: 11px; color: var(--muted); }
+
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+@keyframes shimmer { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+/* ── Layout ── */
+.layout { display: flex; flex: 1; overflow: hidden; }
+
+/* ── Sidebar ── */
+#sidebar {
+  width: 280px; flex-shrink: 0; background: var(--surface);
+  border-right: 1px solid var(--border); overflow-y: auto; display: flex; flex-direction: column;
+}
+.sidebar-header {
+  padding: 12px 16px 8px; font-size: 11px; font-weight: 600;
+  letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted);
+  border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.run-item {
+  padding: 11px 16px; border-bottom: 1px solid var(--border);
+  cursor: pointer; transition: background 0.15s; display: flex; flex-direction: column; gap: 4px;
+}
+.run-item:hover { background: var(--surface2); }
+.run-item.active { background: var(--surface2); border-left: 3px solid var(--primary); padding-left: 13px; }
+.run-item.interrupt { border-left: 3px solid var(--interrupt); padding-left: 13px; }
+.run-item.interrupt.active { border-left-color: var(--interrupt); }
+.run-item-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.run-slug { font-weight: 600; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.run-meta { font-size: 11px; color: var(--muted); display: flex; gap: 8px; flex-wrap: wrap; }
+.empty-state { padding: 40px 20px; text-align: center; color: var(--muted); font-size: 13px; }
+
+/* ── Status badges ── */
+.status-badge {
+  display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 500;
+  padding: 2px 7px; border-radius: 999px; white-space: nowrap; flex-shrink: 0;
+}
+.status-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.status-running    { background: color-mix(in srgb, var(--running) 20%, transparent); color: var(--running); }
+.status-success    { background: color-mix(in srgb, var(--success) 20%, transparent); color: var(--success); }
+.status-failed     { background: color-mix(in srgb, var(--failed)  20%, transparent); color: var(--failed); }
+.status-waiting_interrupt_1, .status-waiting_interrupt_2
+                   { background: color-mix(in srgb, var(--interrupt) 20%, transparent); color: var(--interrupt); }
+.status-done       { background: color-mix(in srgb, var(--done)    20%, transparent); color: var(--done); }
+.status-aborted    { background: color-mix(in srgb, var(--aborted) 15%, transparent); color: var(--aborted); }
+.status-stale      { background: color-mix(in srgb, var(--aborted) 15%, transparent); color: var(--aborted); }
+.dot-running   { background: var(--running); animation: pulse 1.2s infinite; }
+.dot-success   { background: var(--success); }
+.dot-failed    { background: var(--failed); }
+.dot-waiting_interrupt_1, .dot-waiting_interrupt_2 { background: var(--interrupt); animation: pulse 1.5s infinite; }
+.dot-done      { background: var(--done); }
+.dot-aborted   { background: var(--aborted); }
+.dot-stale     { background: var(--aborted); }
+
+/* ── Main panel ── */
+#main { flex: 1; overflow-y: auto; padding: 24px; }
+
+/* ── Interrupt panel ── */
+.interrupt-panel {
+  border: 1px solid color-mix(in srgb, var(--interrupt) 40%, transparent);
+  background: color-mix(in srgb, var(--interrupt) 5%, var(--surface));
+  border-radius: 10px; margin-bottom: 24px; overflow: hidden;
+}
+.interrupt-panel-header {
+  background: color-mix(in srgb, var(--interrupt) 10%, var(--surface));
+  border-bottom: 1px solid color-mix(in srgb, var(--interrupt) 25%, transparent);
+  padding: 14px 20px; display: flex; align-items: center; gap: 10px;
+}
+.interrupt-icon { font-size: 16px; flex-shrink: 0; }
+.interrupt-title { font-size: 14px; font-weight: 700; color: var(--interrupt); flex: 1; }
+.interrupt-subtitle { font-size: 12px; color: var(--muted); }
+.interrupt-body { padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+
+/* Plan display */
+.plan-box {
+  background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+  padding: 16px 18px; max-height: 55vh; overflow-y: auto;
+  font-size: 13px; line-height: 1.7;
+}
+.plan-box h1 { font-size: 17px; font-weight: 700; margin: 0 0 12px; color: var(--text); }
+.plan-box h2 { font-size: 15px; font-weight: 700; margin: 16px 0 8px; color: var(--text); border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+.plan-box h3 { font-size: 13px; font-weight: 600; margin: 12px 0 6px; color: var(--text); }
+.plan-box p  { margin: 0 0 8px; color: var(--muted); }
+.plan-box ul, .plan-box ol { padding-left: 20px; margin: 0 0 8px; color: var(--muted); }
+.plan-box li { margin-bottom: 3px; }
+.plan-box strong { color: var(--text); font-weight: 600; }
+.plan-box code { background: var(--surface2); border: 1px solid var(--border); border-radius: 3px; padding: 1px 5px; font-family: 'Menlo','Monaco','Consolas',monospace; font-size: 11px; color: var(--cache); }
+.plan-box pre { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 12px; overflow-x: auto; margin: 8px 0; }
+.plan-box pre code { background: none; border: none; padding: 0; font-size: 12px; color: var(--text); }
+.plan-box blockquote { border-left: 3px solid var(--border); padding-left: 12px; color: var(--muted); margin: 8px 0; }
+.plan-box hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+.plan-box table { border-collapse: collapse; width: 100%; margin: 8px 0; }
+.plan-box th, .plan-box td { border: 1px solid var(--border); padding: 6px 10px; text-align: left; font-size: 12px; }
+.plan-box th { background: var(--surface2); font-weight: 600; }
+
+/* Questions form */
+.question-list { display: flex; flex-direction: column; gap: 12px; }
+.question-item label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 6px; }
+.question-item label span { color: var(--text); font-weight: 400; }
+textarea, input[type="text"] {
+  width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+  color: var(--text); font-size: 13px; padding: 10px 12px; resize: vertical; outline: none;
+  font-family: inherit; transition: border-color 0.15s;
+}
+textarea:focus, input[type="text"]:focus { border-color: var(--primary); }
+.feedback-area { min-height: 80px; }
+
+/* Interrupt footer */
+.interrupt-footer { display: flex; gap: 10px; justify-content: flex-end; }
+
+/* Merge panel summary */
+.merge-summary { display: flex; gap: 12px; flex-wrap: wrap; }
+.merge-stat { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; flex: 1; min-width: 120px; }
+.merge-stat .label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 4px; }
+.merge-stat .value { font-size: 16px; font-weight: 700; }
+
+/* ── Start modal ── */
+.modal-overlay {
+  display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+  z-index: 100; align-items: center; justify-content: center;
+}
+.modal-overlay.open { display: flex; }
+.modal {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+  padding: 24px; width: 460px; max-width: 95vw; display: flex; flex-direction: column; gap: 18px;
+}
+.modal-title { font-size: 16px; font-weight: 700; }
+.form-field { display: flex; flex-direction: column; gap: 6px; }
+.form-label { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.scope-radios { display: flex; gap: 8px; flex-wrap: wrap; }
+.scope-radio { display: none; }
+.scope-label {
+  padding: 6px 14px; border-radius: 6px; border: 1px solid var(--border);
+  font-size: 12px; font-weight: 500; cursor: pointer; color: var(--muted);
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.scope-radio:checked + .scope-label {
+  background: color-mix(in srgb, var(--primary) 20%, var(--surface));
+  border-color: var(--primary); color: var(--text);
+}
+.modal-footer { display: flex; gap: 10px; justify-content: flex-end; margin-top: 4px; }
+
+/* ── Detail header ── */
+.detail-header { margin-bottom: 20px; }
+.detail-title { font-size: 20px; font-weight: 700; margin-bottom: 8px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.detail-meta { display: flex; gap: 20px; flex-wrap: wrap; color: var(--muted); font-size: 12px; margin-bottom: 16px; }
+.live-badge { font-size: 12px; font-weight: 600; color: var(--running); animation: shimmer 1.5s infinite; }
+
+/* ── Stat cards ── */
+.stat-cards { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 24px; }
+.stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 14px 18px; min-width: 110px; }
+.stat-card.live { border-color: color-mix(in srgb, var(--running) 40%, var(--border)); }
+.stat-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 4px; }
+.stat-value { font-size: 20px; font-weight: 700; }
+
+/* ── Token bar ── */
+.token-bar-wrap { margin-bottom: 24px; }
+.token-bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; gap: 1px; background: var(--border); margin-bottom: 8px; }
+.token-bar-seg { height: 100%; min-width: 2px; transition: width 0.4s; }
+.seg-input  { background: #3b82f6; }
+.seg-cw     { background: #f59e0b; }
+.seg-cr     { background: var(--cache); }
+.seg-output { background: var(--output); }
+.token-bar-legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 11px; color: var(--muted); }
+.legend-item { display: flex; align-items: center; gap: 5px; }
+.legend-dot  { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+
+/* ── Timeline ── */
+.section-title { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 12px; }
+.timeline { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 24px; }
+.timeline-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.timeline-row:last-child { margin-bottom: 0; }
+.timeline-label { width: 200px; flex-shrink: 0; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: right; }
+.timeline-bar-bg { flex: 1; height: 20px; background: var(--bg); border-radius: 4px; overflow: hidden; }
+.timeline-bar { height: 100%; border-radius: 4px; min-width: 4px; transition: width 0.3s; }
+.bar-success { background: var(--success); }
+.bar-failed  { background: var(--failed); }
+.bar-running { background: var(--running); animation: shimmer 1.5s infinite; }
+.bar-stale   { background: var(--aborted); }
+.timeline-cost { width: 56px; flex-shrink: 0; font-size: 11px; color: var(--muted); text-align: right; }
+.timeline-dur  { width: 56px; flex-shrink: 0; font-size: 11px; color: var(--muted); text-align: right; }
+
+/* ── Node cards ── */
+.node-cards { display: flex; flex-direction: column; gap: 8px; }
+.node-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.node-card.running { border-color: color-mix(in srgb, var(--running) 50%, var(--border)); }
+.node-card-header { display: flex; align-items: center; gap: 12px; padding: 12px 16px; cursor: pointer; user-select: none; transition: background 0.15s; }
+.node-card-header:hover { background: var(--surface2); }
+.node-card-name { font-weight: 600; font-size: 13px; flex: 1; }
+.node-card-stats { display: flex; gap: 14px; font-size: 11px; color: var(--muted); flex-wrap: wrap; }
+.node-card-stats span { white-space: nowrap; }
+.chevron { font-size: 10px; color: var(--muted); transition: transform 0.2s; flex-shrink: 0; }
+.chevron.open { transform: rotate(90deg); }
+.node-card-body { display: none; padding: 0 16px 14px; border-top: 1px solid var(--border); }
+.node-card-body.open { display: block; }
+.node-detail-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; margin-top: 10px; }
+.node-detail-item { background: var(--bg); border-radius: 6px; padding: 8px 10px; }
+.node-detail-item .label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 3px; }
+.node-detail-item .value { font-size: 13px; font-weight: 600; }
+.token-mini-bar { display: flex; height: 4px; border-radius: 2px; overflow: hidden; gap: 1px; margin-top: 8px; background: var(--border); }
+.preview-box { background: var(--bg); border-radius: 6px; padding: 10px 12px; font-family: 'Menlo','Monaco','Consolas',monospace; font-size: 11px; color: var(--muted); white-space: pre-wrap; word-break: break-word; margin-top: 10px; max-height: 200px; overflow-y: auto; }
+.error-box { background: color-mix(in srgb, var(--failed) 10%, var(--bg)); border: 1px solid color-mix(in srgb, var(--failed) 30%, transparent); border-radius: 6px; padding: 10px 12px; font-family: 'Menlo','Monaco','Consolas',monospace; font-size: 11px; color: var(--failed); white-space: pre-wrap; word-break: break-word; margin-top: 10px; }
+.run-error-banner { display: flex; align-items: flex-start; gap: 10px; background: color-mix(in srgb, var(--failed) 12%, var(--surface)); border: 1px solid color-mix(in srgb, var(--failed) 40%, transparent); border-radius: 8px; padding: 14px 16px; margin-bottom: 20px; color: var(--failed); }
+.run-error-banner .error-icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+.run-error-banner .error-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
+.run-error-banner .error-text  { font-size: 13px; color: var(--text); word-break: break-word; }
+
+/* ── Interactions ── */
+.interaction-cards { display: flex; flex-direction: column; gap: 8px; margin-bottom: 24px; }
+.interaction-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.interaction-card-header { display: flex; align-items: center; gap: 12px; padding: 12px 16px; }
+.interrupt-badge { display: inline-flex; align-items: center; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: color-mix(in srgb, var(--waiting) 20%, transparent); color: var(--waiting); white-space: nowrap; flex-shrink: 0; }
+.type-badge { display: inline-flex; align-items: center; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; white-space: nowrap; flex-shrink: 0; }
+.type-approved, .type-merge { background: color-mix(in srgb, var(--success) 20%, transparent); color: var(--success); }
+.type-feedback { background: color-mix(in srgb, var(--running) 20%, transparent); color: var(--running); }
+.type-hold     { background: color-mix(in srgb, var(--failed)  20%, transparent); color: var(--failed); }
+.type-pending  { background: color-mix(in srgb, var(--muted)   20%, transparent); color: var(--muted); }
+.interaction-meta { display: flex; gap: 14px; font-size: 11px; color: var(--muted); flex: 1; flex-wrap: wrap; }
+.interaction-body { padding: 0 16px 14px; border-top: 1px solid var(--border); }
+.interaction-text { background: var(--bg); border-radius: 6px; padding: 10px 12px; margin-top: 10px; font-size: 12px; color: var(--text); white-space: pre-wrap; word-break: break-word; font-style: italic; }
+
+/* ── Overview ── */
+.overview-table { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.overview-table th { padding: 10px 14px; text-align: left; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); border-bottom: 1px solid var(--border); }
+.overview-table td { padding: 10px 14px; font-size: 13px; border-bottom: 1px solid var(--border); }
+.overview-table tr:last-child td { border-bottom: none; }
+.overview-table tbody tr:hover td { background: var(--surface2); cursor: pointer; }
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<header>
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+  </svg>
+  <h1>Pipeline Dashboard</h1>
+  <button class="nav-btn active" id="nav-home" onclick="showHome()">Overview</button>
+  <div class="header-spacer"></div>
+  <div style="display:flex;align-items:center;gap:8px">
+    <div class="conn-dot" id="conn-dot"></div>
+    <span class="conn-label" id="conn-label">Connecting…</span>
+  </div>
+  <button class="btn btn-primary" onclick="openModal()">+ New Pipeline</button>
+</header>
+
+<div class="layout">
+  <div id="sidebar">
+    <div class="sidebar-header">Runs</div>
+    <div id="run-list"><div class="empty-state">Loading…</div></div>
+  </div>
+  <div id="main">
+    <div id="home-view"></div>
+    <div id="run-detail" style="display:none"></div>
+  </div>
+</div>
+
+<!-- Start Pipeline Modal -->
+<div class="modal-overlay" id="modal-overlay" onclick="closeModalOutside(event)">
+  <div class="modal">
+    <div class="modal-title">Start New Pipeline</div>
+    <div class="form-field">
+      <div class="form-label">Feature Name</div>
+      <input type="text" id="flow-name-input" placeholder='e.g. "User Journaling"' onkeydown="if(event.key==='Enter')startPipeline()">
+    </div>
+    <div class="form-field">
+      <div class="form-label">Scope</div>
+      <div class="scope-radios">
+        <input type="radio" name="scope" id="scope-auto"    value="auto"    class="scope-radio" checked>
+        <label for="scope-auto"    class="scope-label">Auto-detect</label>
+        <input type="radio" name="scope" id="scope-both"    value="both"    class="scope-radio">
+        <label for="scope-both"    class="scope-label">Both</label>
+        <input type="radio" name="scope" id="scope-backend" value="backend" class="scope-radio">
+        <label for="scope-backend" class="scope-label">Backend</label>
+        <input type="radio" name="scope" id="scope-mobile"  value="mobile"  class="scope-radio">
+        <label for="scope-mobile"  class="scope-label">Mobile</label>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" id="start-btn" onclick="startPipeline()">&#9654; Start Pipeline</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────────
+let runs = []
+let selectedThread = null
+let lastDetailData = {}
+let submitting = false
+let liveTimerInterval = null
+
+// ── Live timer ────────────────────────────────────────────────────────────────
+function startLiveTimer() {
+  if (liveTimerInterval) return
+  liveTimerInterval = setInterval(tickLiveTimer, 1000)
+}
+function stopLiveTimer() {
+  if (liveTimerInterval) { clearInterval(liveTimerInterval); liveTimerInterval = null }
+}
+function tickLiveTimer() {
+  const now = Date.now()
+  document.querySelectorAll('[data-started-at]').forEach(el => {
+    const startedAt = el.dataset.startedAt
+    if (!startedAt) return
+    const completedMs = parseInt(el.dataset.completedMs || '0', 10)
+    el.textContent = fmtDur(completedMs + (now - new Date(startedAt).getTime()))
+  })
+}
+
+// ── Markdown renderer ─────────────────────────────────────────────────────────
+function renderMarkdown(raw) {
+  if (!raw) return ''
+  const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+
+  const lines = raw.split('\n')
+  let html = '', inCode = false, codeLines = [], inList = false
+
+  const flushList = () => { if (inList) { html += '</ul>'; inList = false } }
+  const flushCode = () => {
+    if (inCode) {
+      html += `<pre><code>${esc(codeLines.join('\n'))}</code></pre>`
+      codeLines = []; inCode = false
+    }
+  }
+
+  for (const rawLine of lines) {
+    const line = rawLine
+
+    if (line.startsWith('```')) {
+      if (inCode) { flushCode() } else { flushList(); inCode = true }
+      continue
+    }
+    if (inCode) { codeLines.push(line); continue }
+
+    if (/^### /.test(line)) { flushList(); html += `<h3>${inlineFormat(esc(line.slice(4)))}</h3>`; continue }
+    if (/^## /.test(line))  { flushList(); html += `<h2>${inlineFormat(esc(line.slice(3)))}</h2>`; continue }
+    if (/^# /.test(line))   { flushList(); html += `<h1>${inlineFormat(esc(line.slice(2)))}</h1>`; continue }
+
+    if (/^---+$/.test(line.trim())) { flushList(); html += '<hr>'; continue }
+
+    if (/^[-*] /.test(line)) {
+      if (!inList) { html += '<ul>'; inList = true }
+      html += `<li>${inlineFormat(esc(line.slice(2)))}</li>`; continue
+    }
+    if (/^\d+\. /.test(line)) {
+      if (!inList) { html += '<ol>'; inList = true }
+      html += `<li>${inlineFormat(esc(line.replace(/^\d+\. /,'')))}</li>`; continue
+    }
+
+    flushList()
+
+    if (line.startsWith('|') && line.endsWith('|')) {
+      if (line.replace(/\|/g,'').trim().replace(/-/g,'') === '') continue
+      const cells = line.slice(1,-1).split('|').map(c => c.trim())
+      const tag = html.endsWith('</th>') ? 'td' : 'th'
+      html += `<tr>${cells.map(c => `<${tag}>${inlineFormat(esc(c))}</${tag}>`).join('')}</tr>`
+      continue
+    }
+
+    if (!line.trim()) { html += '<br>'; continue }
+    html += `<p>${inlineFormat(esc(line))}</p>`
+  }
+
+  flushCode(); flushList()
+  return html
+}
+
+function inlineFormat(s) {
+  return s
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+    .replace(/__(\S[^_]*)__/g, '<strong>$1</strong>')
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────────
+function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;') }
+function fmtDur(ms) {
+  if (ms == null) return '–'
+  if (ms < 1000) return ms + 'ms'
+  if (ms < 60000) return (ms/1000).toFixed(1) + 's'
+  if (ms < 3600000) { const m=Math.floor(ms/60000); const s=Math.floor((ms%60000)/1000); return m+'m '+s+'s' }
+  const h=Math.floor(ms/3600000); const m=Math.floor((ms%3600000)/60000); return h+'h '+m+'m'
+}
+function fmtCost(usd) {
+  if (usd == null || usd === 0) return '–'
+  if (usd >= 1) return '$'+usd.toFixed(2)
+  if (usd >= 0.01) return '$'+usd.toFixed(3)
+  return '$'+usd.toFixed(4)
+}
+function fmtTokens(n) {
+  if (n == null || n === 0) return '–'
+  if (n >= 1000000) return (n/1000000).toFixed(2)+'M'
+  if (n >= 1000) return (n/1000).toFixed(1)+'k'
+  return String(n)
+}
+function fmtDate(iso) {
+  if (!iso) return '–'
+  const d = new Date(iso)
+  return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})
+}
+function statusLabel(s) {
+  return {running:'Running',waiting_interrupt_1:'Interrupt #1',waiting_interrupt_2:'Interrupt #2',done:'Done',aborted:'Aborted',failed:'Failed'}[s] ?? s
+}
+function statusBadge(s) {
+  return `<span class="status-badge status-${s}"><span class="status-dot dot-${s}"></span>${statusLabel(s)}</span>`
+}
+function getTotals(run) {
+  if (run.totals) return run.totals
+  const done = (run.nodes??[]).filter(n=>n.status==='success'||n.status==='failed')
+  return {
+    totalTokens:      done.reduce((s,n)=>s+(n.totalTokens??0),0),
+    costUsd:          done.reduce((s,n)=>s+(n.costUsd??0),0),
+    inputTokens:      done.reduce((s,n)=>s+(n.inputTokens??0),0),
+    cacheWriteTokens: done.reduce((s,n)=>s+(n.cacheWriteTokens??0),0),
+    cacheReadTokens:  done.reduce((s,n)=>s+(n.cacheReadTokens??0),0),
+    outputTokens:     done.reduce((s,n)=>s+(n.outputTokens??0),0),
+    totalDurationMs:  done.reduce((s,n)=>s+(n.durationMs??0),0),
+  }
+}
+function isWaiting(run) { return run?.state?.status?.startsWith('waiting_') }
+function isLive(run) { return run?.state?.status === 'running' }
+function tokenBar(t, mini) {
+  const tot = Math.max(t.inputTokens+t.cacheWriteTokens+t.cacheReadTokens+t.outputTokens,1)
+  const pct = x => Math.max(0.5,(x/tot)*100).toFixed(1)
+  const cls = mini ? 'token-mini-bar' : 'token-bar'
+  if (!t.totalTokens) return ''
+  return `<div class="${cls}">
+    <div class="token-bar-seg seg-input" style="width:${pct(t.inputTokens??0)}%"></div>
+    <div class="token-bar-seg seg-cw"    style="width:${pct(t.cacheWriteTokens??0)}%"></div>
+    <div class="token-bar-seg seg-cr"    style="width:${pct(t.cacheReadTokens??0)}%"></div>
+    <div class="token-bar-seg seg-output"style="width:${pct(t.outputTokens??0)}%"></div>
+  </div>`
+}
+
+// ── SSE ────────────────────────────────────────────────────────────────────────
+let es
+function connectSSE() {
+  es = new EventSource('/api/events')
+  es.onopen    = () => setConn(true)
+  es.onerror   = () => setConn(false)
+  es.onmessage = e  => handleUpdate(JSON.parse(e.data))
+}
+function setConn(ok) {
+  document.getElementById('conn-dot').className   = 'conn-dot' + (ok ? ' live' : '')
+  document.getElementById('conn-label').textContent = ok ? 'Live' : 'Reconnecting…'
+}
+function handleUpdate(newRuns) {
+  runs = newRuns
+  renderSidebar()
+
+  if (selectedThread) {
+    const run = runs.find(r => r.threadId === selectedThread)
+    if (!run) return
+    const serial = JSON.stringify({ nodes: run.nodes?.length, status: run.state?.status, totals: run.totals?.updatedAt })
+    if (serial === lastDetailData[selectedThread]) return
+    const prevSerial = lastDetailData[selectedThread]
+    lastDetailData[selectedThread] = serial
+
+    const prevStatus = prevSerial ? JSON.parse('{' + prevSerial.slice(1, -1).split(',').find(s => s.includes('status')) + '}').status : null
+    if (isWaiting(run) && prevStatus === run.state?.status) {
+      softUpdateStats(run)
+    } else {
+      renderDetail(run)
+    }
+  } else {
+    document.getElementById('home-view').innerHTML = renderHome()
+  }
+}
+
+function softUpdateStats(run) {
+  const t = getTotals(run)
+  const el = id => document.getElementById('stat-' + id)
+  if (el('dur'))    el('dur').textContent    = fmtDur(t.totalDurationMs || null)
+  if (el('cost'))   el('cost').textContent   = fmtCost(t.costUsd || null)
+  if (el('tokens')) el('tokens').textContent = fmtTokens(t.totalTokens || null)
+}
+
+// ── Modal ──────────────────────────────────────────────────────────────────────
+function openModal() {
+  document.getElementById('modal-overlay').classList.add('open')
+  document.getElementById('flow-name-input').focus()
+}
+function closeModal() {
+  document.getElementById('modal-overlay').classList.remove('open')
+  document.getElementById('flow-name-input').value = ''
+  document.getElementById('start-btn').disabled = false
+  document.getElementById('start-btn').textContent = '▶ Start Pipeline'
+}
+function closeModalOutside(e) { if (e.target === document.getElementById('modal-overlay')) closeModal() }
+
+async function startPipeline() {
+  const flowName = document.getElementById('flow-name-input').value.trim()
+  if (!flowName) { document.getElementById('flow-name-input').focus(); return }
+  const scope = document.querySelector('input[name="scope"]:checked')?.value ?? 'auto'
+  const btn = document.getElementById('start-btn')
+  btn.disabled = true
+  btn.textContent = 'Starting…'
+  try {
+    const r = await fetch('/api/pipeline/start', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ flowName, scope }) })
+    const d = await r.json()
+    if (d.ok) closeModal()
+    else { btn.disabled = false; btn.textContent = '▶ Start Pipeline'; alert('Error: ' + d.error) }
+  } catch(e) { btn.disabled = false; btn.textContent = '▶ Start Pipeline'; alert('Failed to start: ' + e.message) }
+}
+
+// ── Optimistic status update ──────────────────────────────────────────────────
+function optimisticRunning(threadId) {
+  const run = runs.find(r => r.threadId === threadId)
+  if (!run) return
+  run.state.status = 'running'
+  lastDetailData[threadId] = null
+  renderDetail(run)
+  renderSidebar()
+}
+
+// ── Interrupt submit ───────────────────────────────────────────────────────────
+async function submitInterrupt(threadId, interruptKey, response) {
+  if (submitting) return
+  submitting = true
+  try {
+    await fetch(`/api/pipeline/respond/${threadId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ interruptKey, response }),
+    })
+  } finally {
+    submitting = false
+  }
+}
+
+async function rerunFailedStep(threadId) {
+  try {
+    const r = await fetch(`/api/pipeline/rerun/${threadId}`, { method: 'POST' })
+    const d = await r.json()
+    if (d.ok) optimisticRunning(threadId)
+    else alert('Rerun failed: ' + (d.error ?? 'unknown error'))
+  } catch(e) { alert('Rerun failed: ' + e.message) }
+}
+
+function rerunPlan(threadId) {
+  // Clear bad plan content before optimistic update so it doesn't flash
+  const run = runs.find(r => r.threadId === threadId)
+  if (run) run.state.featurePlan = ''
+  submitInterrupt(threadId, '1', 'Plan generation failed due to API error — please regenerate the plan.')
+  optimisticRunning(threadId)
+}
+
+function approvePlan(threadId) {
+  submitInterrupt(threadId, '1', 'approved')
+  optimisticRunning(threadId)
+}
+
+function requestChanges(threadId) {
+  const ta = document.getElementById('feedback-textarea')
+  const text = ta ? ta.value.trim() : ''
+  if (!text) { ta?.focus(); ta?.classList.add('shake'); setTimeout(() => ta?.classList.remove('shake'), 500); return }
+  submitInterrupt(threadId, '1', text)
+  optimisticRunning(threadId)
+}
+
+function submitAnswers(threadId) {
+  const inputs = document.querySelectorAll('.q-input')
+  const answers = {}
+  let allFilled = true
+  inputs.forEach((inp, i) => {
+    const q = inp.dataset.question
+    const v = inp.value.trim()
+    if (!v) { inp.focus(); allFilled = false }
+    answers[q] = v
+  })
+  if (!allFilled) return
+  const panel = document.getElementById('interrupt-panel')
+  if (panel) { panel.style.opacity = '0.5'; panel.style.pointerEvents = 'none' }
+  submitInterrupt(threadId, 'q', JSON.stringify({ answers }))
+}
+
+function mergePr(threadId) {
+  submitInterrupt(threadId, '2', 'merge')
+  optimisticRunning(threadId)
+}
+
+function holdPipeline(threadId) {
+  const panel = document.getElementById('interrupt-panel')
+  if (panel) { panel.style.opacity = '0.5'; panel.style.pointerEvents = 'none' }
+  submitInterrupt(threadId, '2', 'hold')
+}
+
+function requestFixes(threadId) {
+  const ta = document.getElementById('fix-feedback-textarea')
+  const text = ta ? ta.value.trim() : ''
+  if (!text) { ta?.focus(); return }
+  submitInterrupt(threadId, '2', 'fix: ' + text)
+  optimisticRunning(threadId)
+}
+
+// ── Interrupt panel rendering ─────────────────────────────────────────────────
+function renderInterruptPanel(run) {
+  const status = run.state?.status
+  if (!isWaiting(run)) return ''
+
+  const tid = run.threadId
+  const feature = escHtml(run.state?.featureDescription || run.state?.featureSlug || '')
+
+  if (status === 'waiting_interrupt_1') {
+    let questions = []
+    try {
+      const raw = run.state?.openQuestions
+      questions = Array.isArray(raw) ? raw : (raw ? JSON.parse(raw) : [])
+    } catch {}
+
+    if (questions.length > 0) {
+      const qItems = questions.map((q, i) => `
+        <div class="question-item">
+          <label>Q${i+1} <span>${escHtml(q)}</span></label>
+          <textarea class="q-input" rows="2" data-question="${escHtml(q)}" placeholder="Your answer…"></textarea>
+        </div>`).join('')
+      return `
+        <div class="interrupt-panel" id="interrupt-panel">
+          <div class="interrupt-panel-header">
+            <span class="interrupt-icon">❓</span>
+            <span class="interrupt-title">Questions — ${questions.length} clarification${questions.length>1?'s':''} needed</span>
+            <span class="interrupt-subtitle">${feature}</span>
+          </div>
+          <div class="interrupt-body">
+            <div class="question-list">${qItems}</div>
+            <div class="interrupt-footer">
+              <button class="btn btn-primary" onclick="submitAnswers('${tid}')">Submit Answers →</button>
+            </div>
+          </div>
+        </div>`
+    }
+
+    const planContent = run.state?.featurePlan || ''
+    const planIsError = !planContent || /api error|socket connection|connection error|fetch failed/i.test(planContent) || planContent.length < 100
+    const planHtml = renderMarkdown(planContent)
+    const qaRaw = run.state?.questionAnswers
+    let qaHtml = ''
+    try {
+      const qa = typeof qaRaw === 'string' ? JSON.parse(qaRaw || '{}') : (qaRaw ?? {})
+      const entries = Object.entries(qa)
+      if (entries.length > 0) {
+        qaHtml = `<div style="background:color-mix(in srgb,var(--success) 6%,var(--surface));border:1px solid color-mix(in srgb,var(--success) 25%,transparent);border-radius:8px;padding:12px 16px">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:var(--success);margin-bottom:8px">✓ Answered Questions</div>
+          ${entries.map(([q,a]) => `<div style="margin-bottom:6px;font-size:12px"><div style="color:var(--muted);margin-bottom:2px">${escHtml(String(q))}</div><div style="color:var(--text);font-weight:500">${escHtml(String(a))}</div></div>`).join('')}
+        </div>`
+      }
+    } catch {}
+    if (planIsError) {
+      return `
+        <div class="interrupt-panel" id="interrupt-panel">
+          <div class="interrupt-panel-header" style="background:color-mix(in srgb,var(--failed) 10%,var(--surface));border-color:color-mix(in srgb,var(--failed) 25%,transparent)">
+            <span class="interrupt-icon">⚠</span>
+            <span class="interrupt-title" style="color:var(--failed)">Plan generation failed</span>
+            <span class="interrupt-subtitle">${feature}</span>
+          </div>
+          <div class="interrupt-body">
+            ${planContent ? `<div class="error-box">${escHtml(planContent.slice(0, 600))}</div>` : ''}
+            <div style="font-size:13px;color:var(--muted)">The API connection was interrupted. Click <strong style="color:var(--text)">Re-run Plan</strong> to try again.</div>
+            <div class="interrupt-footer">
+              <button class="btn btn-primary" onclick="rerunPlan('${tid}')">↻ Re-run Plan</button>
+            </div>
+          </div>
+        </div>`
+    }
+
+    return `
+      <div class="interrupt-panel" id="interrupt-panel">
+        <div class="interrupt-panel-header">
+          <span class="interrupt-icon">⚡</span>
+          <span class="interrupt-title">Interrupt #1 — Review Plan</span>
+          <span class="interrupt-subtitle">${feature}</span>
+        </div>
+        <div class="interrupt-body">
+          ${qaHtml}
+          <div class="plan-box">${planHtml || '<span style="color:var(--muted)">Plan loading…</span>'}</div>
+          <div>
+            <div style="font-size:12px;color:var(--muted);margin-bottom:6px">Feedback (leave empty to approve):</div>
+            <textarea id="feedback-textarea" class="feedback-area" placeholder="Describe what needs to change, or leave empty and click Approve…"></textarea>
+          </div>
+          <div class="interrupt-footer">
+            <button class="btn btn-warning" onclick="requestChanges('${tid}')">↩ Request Changes</button>
+            <button class="btn btn-success" onclick="approvePlan('${tid}')">✓ Approve Plan</button>
+          </div>
+        </div>
+      </div>`
+  }
+
+  if (status === 'waiting_interrupt_2') {
+    const sev  = run.state?.reviewSeverity ?? 'clean'
+    const iter = run.state?.iteration ?? 0
+    const testNode = [...(run.nodes??[])].reverse().find(n => n.node === 'test_runner')
+    const testsOk  = testNode?.status === 'success'
+    const sevColor = sev === 'critical' ? 'var(--failed)' : sev === 'high' ? 'var(--running)' : 'var(--success)'
+    return `
+      <div class="interrupt-panel" id="interrupt-panel">
+        <div class="interrupt-panel-header">
+          <span class="interrupt-icon">🚀</span>
+          <span class="interrupt-title">Interrupt #2 — Ready to Merge</span>
+          <span class="interrupt-subtitle">${feature}</span>
+        </div>
+        <div class="interrupt-body">
+          <div class="merge-summary">
+            <div class="merge-stat">
+              <div class="label">Tests</div>
+              <div class="value" style="color:${testsOk?'var(--success)':'var(--failed)'}">${testsOk?'✓ Passed':'✗ Failed'}</div>
+            </div>
+            <div class="merge-stat">
+              <div class="label">Review</div>
+              <div class="value" style="color:${sevColor}">${sev === 'clean' ? '✓ Clean' : '⚠ ' + sev.charAt(0).toUpperCase()+sev.slice(1)}</div>
+            </div>
+            <div class="merge-stat">
+              <div class="label">Auto-fix rounds</div>
+              <div class="value">${iter}</div>
+            </div>
+          </div>
+          <div>
+            <div style="font-size:12px;color:var(--muted);margin-bottom:6px">Request implementation fixes (optional):</div>
+            <textarea id="fix-feedback-textarea" class="feedback-area" placeholder="Describe what needs to be fixed or improved — re-runs the implementation agents with your feedback…"></textarea>
+          </div>
+          <div class="interrupt-footer">
+            <button class="btn btn-ghost" onclick="holdPipeline('${tid}')">⏸ Hold</button>
+            <button class="btn btn-warning" onclick="requestFixes('${tid}')">↩ Request Fixes</button>
+            <button class="btn btn-primary" onclick="mergePr('${tid}')">🔀 Merge PR →</button>
+          </div>
+        </div>
+      </div>`
+  }
+  return ''
+}
+
+// ── Sidebar ────────────────────────────────────────────────────────────────────
+function renderSidebar() {
+  const list = document.getElementById('run-list')
+  if (!runs.length) {
+    list.innerHTML = '<div class="empty-state">No runs yet.<br><br>Click <strong>+ New Pipeline</strong> to start one.</div>'
+    return
+  }
+  list.innerHTML = runs.map(r => {
+    const t    = getTotals(r)
+    const slug = r.state?.featureSlug || r.state?.flowName || r.threadId
+    const isActive = r.threadId === selectedThread
+    const waiting  = isWaiting(r)
+    return `
+      <div class="run-item${isActive?' active':''}${waiting?' interrupt':''}" onclick="selectRun('${r.threadId}')">
+        <div class="run-item-top">
+          <span class="run-slug" title="${slug}">${slug}</span>
+          ${statusBadge(r.state?.status ?? 'unknown')}
+        </div>
+        <div class="run-meta">
+          <span>${fmtDate(r.createdAt)}</span>
+          <span>${fmtDur(t.totalDurationMs||null)}</span>
+          <span>${fmtCost(t.costUsd||null)}</span>
+        </div>
+      </div>`
+  }).join('')
+}
+
+// ── Home view ──────────────────────────────────────────────────────────────────
+function renderHome() {
+  const allTotals = runs.map(r => getTotals(r))
+  const totalMs     = allTotals.reduce((s,t)=>s+(t.totalDurationMs??0),0)
+  const totalCost   = allTotals.reduce((s,t)=>s+(t.costUsd??0),0)
+  const totalTokens = allTotals.reduce((s,t)=>s+(t.totalTokens??0),0)
+  const doneRuns    = runs.filter(r=>r.state?.status==='done').length
+  const waitingRuns = runs.filter(r=>isWaiting(r))
+
+  const waitingBanner = waitingRuns.length ? `
+    <div style="background:color-mix(in srgb,var(--interrupt) 8%,var(--surface));border:1px solid color-mix(in srgb,var(--interrupt) 35%,transparent);border-radius:8px;padding:14px 18px;margin-bottom:24px;display:flex;align-items:center;gap:12px">
+      <span style="font-size:16px">⚡</span>
+      <span style="font-weight:600;color:var(--interrupt)">${waitingRuns.length} run${waitingRuns.length>1?'s':''} waiting for your input</span>
+      <div style="flex:1"></div>
+      ${waitingRuns.map(r=>`<button class="btn btn-warning" onclick="selectRun('${r.threadId}')">${r.state?.featureSlug || r.threadId}</button>`).join('')}
+    </div>` : ''
+
+  const rows = runs.map(r => {
+    const t    = getTotals(r)
+    const slug = r.state?.featureSlug || r.state?.flowName || r.threadId
+    return `<tr onclick="selectRun('${r.threadId}')">
+      <td><strong>${escHtml(slug)}</strong></td>
+      <td>${statusBadge(r.state?.status ?? 'unknown')}</td>
+      <td style="color:var(--muted);font-size:12px">${fmtDate(r.createdAt)}</td>
+      <td>${fmtDur(t.totalDurationMs||null)}</td>
+      <td>${fmtCost(t.costUsd||null)}</td>
+      <td style="color:var(--muted)">${fmtTokens(t.totalTokens||null)}</td>
+      <td style="color:var(--muted)">${(r.nodes??[]).length}</td>
+    </tr>`
+  }).join('')
+
+  if (!runs.length) {
+    return `<div style="text-align:center;padding:80px 20px;color:var(--muted)">
+      <div style="font-size:40px;margin-bottom:16px">⚡</div>
+      <div style="font-size:18px;font-weight:600;color:var(--text);margin-bottom:8px">No pipelines yet</div>
+      <div style="margin-bottom:24px">Click <strong style="color:var(--text)">+ New Pipeline</strong> to run your first feature.</div>
+    </div>`
+  }
+
+  return `
+    <div class="detail-header">
+      <div class="detail-title">Overview</div>
+      <div class="detail-meta"><span>${runs.length} pipeline run${runs.length !== 1?'s':''} total</span></div>
+    </div>
+    ${waitingBanner}
+    <div class="stat-cards">
+      <div class="stat-card"><div class="stat-label">Total Runs</div><div class="stat-value">${runs.length}</div></div>
+      <div class="stat-card"><div class="stat-label">Completed</div><div class="stat-value" style="color:var(--success)">${doneRuns}</div></div>
+      <div class="stat-card"><div class="stat-label">Total Time</div><div class="stat-value">${fmtDur(totalMs||null)}</div></div>
+      <div class="stat-card"><div class="stat-label">Total Cost</div><div class="stat-value" style="color:var(--output)">${fmtCost(totalCost||null)}</div></div>
+      <div class="stat-card"><div class="stat-label">Total Tokens</div><div class="stat-value">${fmtTokens(totalTokens||null)}</div></div>
+    </div>
+    <div class="section-title">All Runs</div>
+    <table class="overview-table">
+      <thead><tr><th>Feature</th><th>Status</th><th>Started</th><th>Duration</th><th>Cost</th><th>Tokens</th><th>Nodes</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`
+}
+
+function showHome() {
+  selectedThread = null
+  stopLiveTimer()
+  renderSidebar()
+  document.getElementById('run-detail').style.display = 'none'
+  document.getElementById('home-view').style.display  = 'block'
+  document.getElementById('home-view').innerHTML = renderHome()
+  document.getElementById('nav-home').classList.add('active')
+}
+
+// ── Detail panel ──────────────────────────────────────────────────────────────
+function renderDetail(run) {
+  const state = run.state ?? {}
+  const nodes = run.nodes ?? []
+  const t     = getTotals(run)
+  const slug  = state.featureSlug || state.flowName || run.threadId
+  const live  = isLive(run)
+
+  const runningNode = nodes.find(n => n.status === 'running')
+  const maxMs = Math.max(...nodes.map(n => n.durationMs ?? 0), 1)
+  const timelineRows = nodes.length ? nodes.map(n => {
+    const pct = Math.max(2, Math.round(((n.durationMs??0)/maxMs)*100))
+    const barClass = 'bar-'+(n.status==='success'?'success':n.status==='failed'?'failed':n.status==='running'?'running':'stale')
+    const durDisplay = n.status === 'running' && n.startedAt
+      ? `<span data-started-at="${n.startedAt}">${fmtDur(Date.now() - new Date(n.startedAt).getTime())}</span>`
+      : fmtDur(n.durationMs)
+    return `<div class="timeline-row">
+      <div class="timeline-label" title="${n.node}">${n.node}</div>
+      <div class="timeline-bar-bg"><div class="timeline-bar ${barClass}" style="width:${pct}%"></div></div>
+      <div class="timeline-cost">${fmtCost(n.costUsd)}</div>
+      <div class="timeline-dur">${durDisplay}</div>
+    </div>`
+  }).join('') : '<div style="color:var(--muted);font-size:13px">No nodes recorded yet.</div>'
+
+  const nodeCards = nodes.map((n, i) => {
+    const id  = 'nc-'+i
+    const tok = { inputTokens: n.inputTokens??0, cacheWriteTokens: n.cacheWriteTokens??0, cacheReadTokens: n.cacheReadTokens??0, outputTokens: n.outputTokens??0, totalTokens: n.totalTokens??0 }
+    const displayStatus = (n.status === 'success' && n.error) ? 'failed' : n.status
+    const nodeDurAttr = displayStatus === 'running' && n.startedAt ? ` data-started-at="${n.startedAt}"` : ''
+    const nodeDurText = displayStatus === 'running' && n.startedAt
+      ? fmtDur(Date.now() - new Date(n.startedAt).getTime()) : fmtDur(n.durationMs)
+    return `<div class="node-card${displayStatus==='running'?' running':''}">
+      <div class="node-card-header" onclick="toggleCard('${id}')">
+        ${statusBadge(displayStatus)}
+        <span class="node-card-name">${n.node}</span>
+        <span class="node-card-stats">
+          <span${nodeDurAttr}>${nodeDurText}</span>
+          ${tok.totalTokens?'<span>'+fmtTokens(tok.totalTokens)+' tok</span>':''}
+          ${n.costUsd?'<span style="color:var(--output)">'+fmtCost(n.costUsd)+'</span>':''}
+        </span>
+        <span class="chevron" id="${id}-chev">▶</span>
+      </div>
+      <div class="node-card-body" id="${id}">
+        ${tok.totalTokens ? tokenBar(tok, true) : ''}
+        <div class="node-detail-grid">
+          <div class="node-detail-item"><div class="label">Agent</div><div class="value" style="font-size:11px">${n.agentName??'–'}</div></div>
+          <div class="node-detail-item"><div class="label">Model</div><div class="value" style="font-size:11px">${n.model??'–'}</div></div>
+          <div class="node-detail-item"><div class="label">PID</div><div class="value" style="font-size:11px">${n.pid??'–'}</div></div>
+          <div class="node-detail-item"><div class="label">Duration</div><div class="value"${nodeDurAttr}>${nodeDurText}</div></div>
+          <div class="node-detail-item"><div class="label">Cost</div><div class="value" style="color:var(--output)">${fmtCost(n.costUsd)}</div></div>
+          <div class="node-detail-item"><div class="label">Total tokens</div><div class="value">${fmtTokens(tok.totalTokens)||'–'}</div></div>
+          <div class="node-detail-item"><div class="label">Input</div><div class="value" style="color:#3b82f6">${fmtTokens(tok.inputTokens)||'–'}</div></div>
+          <div class="node-detail-item"><div class="label">Cache write</div><div class="value" style="color:#f59e0b">${fmtTokens(tok.cacheWriteTokens)||'–'}</div></div>
+          <div class="node-detail-item"><div class="label">Cache read</div><div class="value" style="color:var(--cache)">${fmtTokens(tok.cacheReadTokens)||'–'}</div></div>
+          <div class="node-detail-item"><div class="label">Output</div><div class="value" style="color:var(--output)">${fmtTokens(tok.outputTokens)||'–'}</div></div>
+          <div class="node-detail-item"><div class="label">Started</div><div class="value" style="font-size:11px">${fmtDate(n.startedAt)}</div></div>
+        </div>
+        ${n.error?'<div class="error-box">'+escHtml(n.error)+'</div>':''}
+        ${n.outputPreview?'<div class="preview-box">'+escHtml(n.outputPreview)+'</div>':''}
+      </div>
+    </div>`
+  }).join('')
+
+  let interactionsHtml = ''
+  const hi = run.humanInteractions
+  if (hi?.interactions?.length) {
+    const cards = hi.interactions.map(i => {
+      const tok = { inputTokens:i.inputTokens??0, cacheWriteTokens:i.cacheWriteTokens??0, cacheReadTokens:i.cacheReadTokens??0, outputTokens:i.outputTokens??0, totalTokens:i.totalTokens??0 }
+      const typeLabel = i.type ? i.type.charAt(0).toUpperCase()+i.type.slice(1) : 'Pending'
+      return `<div class="interaction-card">
+        <div class="interaction-card-header">
+          <span class="interrupt-badge">Interrupt #${i.interruptNumber}</span>
+          <span class="type-badge type-${i.type??'pending'}">${typeLabel}</span>
+          <div class="interaction-meta">
+            ${i.waitDurationMs?'<span>Wait: '+fmtDur(i.waitDurationMs)+'</span>':''}
+            ${tok.totalTokens?'<span>'+fmtTokens(tok.totalTokens)+' tok</span>':''}
+            ${i.respondedAt?'<span>'+fmtDate(i.respondedAt)+'</span>':'<span style="color:var(--running)">Waiting…</span>'}
+          </div>
+        </div>
+        ${i.text?'<div class="interaction-body"><div class="interaction-text">"'+escHtml(i.text)+'"</div></div>':''}
+      </div>`
+    }).join('')
+    interactionsHtml = '<div class="section-title" style="margin-top:4px">Human Interactions</div><div class="interaction-cards">'+cards+'</div>'
+  }
+
+  const failedNode  = nodes.slice().reverse().find(n => n.status === 'failed' || (n.error && n.status !== 'running'))
+  const nodeDetail  = failedNode?.error ? failedNode.error.trim() : ''
+  const errorBanner = (state.status==='failed' && state.errorMessage)
+    ? `<div class="run-error-banner"><div class="error-icon">✕</div><div style="flex:1"><div class="error-label">Pipeline failed — ${escHtml(failedNode?.node ?? 'unknown step')}</div><div class="error-text">${escHtml(state.errorMessage)}</div>${nodeDetail ? `<div class="error-box" style="margin-top:10px;max-height:160px;overflow-y:auto">${escHtml(nodeDetail)}</div>` : ''}</div><button class="btn btn-warning" style="flex-shrink:0;align-self:flex-start" onclick="rerunFailedStep('${run.threadId}')">↻ Rerun ${escHtml(failedNode?.node ?? 'step')}</button></div>` : ''
+
+  const runTokBar = t.totalTokens ? `<div class="token-bar-wrap">
+    ${tokenBar(t, false)}
+    <div class="token-bar-legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#3b82f6"></div>Input</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#f59e0b"></div>Cache write</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#38bdf8"></div>Cache read</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#a78bfa"></div>Output</div>
+    </div>
+  </div>` : ''
+
+  const html = `
+    <div class="detail-header">
+      <div class="detail-title">
+        ${escHtml(slug)} ${statusBadge(state.status??'unknown')}
+        ${live?'<span class="live-badge">● LIVE</span>':''}
+      </div>
+      <div class="detail-meta">
+        <span>Thread: ${run.threadId}</span>
+        <span>Started: ${fmtDate(run.createdAt)}</span>
+        <span>Scope: ${state.scope??'–'}</span>
+        <span>Orchestrator PID: ${run.pid??'–'}</span>
+        ${state.featureDescription?'<span>'+escHtml(state.featureDescription)+'</span>':''}
+      </div>
+    </div>
+
+    ${renderInterruptPanel(run)}
+    ${live && runningNode ? `
+    <div style="background:color-mix(in srgb,var(--running) 8%,var(--surface));border:1px solid color-mix(in srgb,var(--running) 35%,transparent);border-radius:8px;padding:14px 18px;margin-bottom:24px;display:flex;align-items:center;gap:14px">
+      <span style="font-size:18px;display:inline-block;animation:spin 1.2s linear infinite;line-height:1">⟳</span>
+      <div style="flex:1">
+        <div style="font-weight:600;color:var(--running);font-size:13px">${escHtml(runningNode.agentName ?? runningNode.node)} is running…</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:3px">${escHtml(runningNode.node)} · <span data-started-at="${runningNode.startedAt}">0s</span> elapsed</div>
+      </div>
+    </div>` : ''}
+    ${errorBanner}
+
+    <div class="stat-cards">
+      <div class="stat-card${live?' live':''}"><div class="stat-label">Duration</div><div class="stat-value" id="stat-dur"${live && runningNode ? ` data-started-at="${runningNode.startedAt||''}" data-completed-ms="${t.totalDurationMs||0}"` : ''}>${fmtDur(t.totalDurationMs||null)}</div></div>
+      <div class="stat-card${live?' live':''}"><div class="stat-label">Total Cost</div><div class="stat-value" id="stat-cost" style="color:var(--output)">${fmtCost(t.costUsd||null)}</div></div>
+      <div class="stat-card${live?' live':''}"><div class="stat-label">Total Tokens</div><div class="stat-value" id="stat-tokens">${fmtTokens(t.totalTokens||null)}</div></div>
+      <div class="stat-card"><div class="stat-label">Input / Output</div><div class="stat-value" style="font-size:14px">${t.inputTokens||t.outputTokens?fmtTokens(t.inputTokens)+' / '+fmtTokens(t.outputTokens):'–'}</div></div>
+      <div class="stat-card"><div class="stat-label">Cache read</div><div class="stat-value" style="color:var(--cache)">${fmtTokens(t.cacheReadTokens||null)}</div></div>
+      <div class="stat-card"><div class="stat-label">Nodes</div><div class="stat-value">${nodes.length}</div></div>
+    </div>
+
+    ${runTokBar}
+    <div class="section-title">Timeline</div>
+    <div class="timeline">${timelineRows}</div>
+    ${nodes.length?'<div class="section-title">Nodes</div><div class="node-cards">'+nodeCards+'</div>':''}
+    ${interactionsHtml}
+  `
+
+  document.getElementById('home-view').style.display  = 'none'
+  document.getElementById('nav-home').classList.remove('active')
+  const detail = document.getElementById('run-detail')
+  detail.style.display = 'block'
+  detail.innerHTML = html
+  document.getElementById('main').scrollTop = 0
+
+  if (live) { startLiveTimer() } else { stopLiveTimer() }
+}
+
+async function selectRun(threadId) {
+  selectedThread = threadId
+  lastDetailData[threadId] = null
+  renderSidebar()
+  try {
+    const res = await fetch('/api/runs/' + threadId)
+    if (!res.ok) throw new Error('Not found')
+    const run = await res.json()
+    renderDetail(run)
+    lastDetailData[threadId] = JSON.stringify({ nodes: run.nodes?.length, status: run.state?.status, totals: run.totals?.updatedAt })
+  } catch(e) {
+    document.getElementById('run-detail').style.display = 'block'
+    document.getElementById('run-detail').innerHTML = '<div style="color:var(--failed);padding:20px">Failed to load: '+e.message+'</div>'
+  }
+}
+
+function toggleCard(id) {
+  const body = document.getElementById(id)
+  const chev = document.getElementById(id+'-chev')
+  if (!body) return
+  body.classList.toggle('open')
+  if (chev) chev.classList.toggle('open')
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+connectSSE()
+showHome()
+</script>
+</body>
+</html>
