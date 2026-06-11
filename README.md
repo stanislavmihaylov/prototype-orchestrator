@@ -27,7 +27,6 @@ Designed to be added to any project as a **git submodule**.
 
 - Node.js ≥ 20
 - npm
-- Docker (for the dashboard container and the project's database)
 - Claude Code CLI (`claude`) installed and authenticated
 - GitHub CLI (`gh`) installed and authenticated
 
@@ -49,8 +48,7 @@ git submodule update --init
 
 Add these targets and extend your existing `setup` target:
 
-
-# UNIX
+# UNIX / macOS / Git Bash
 ```makefile
 # ─── Pipeline ─────────────────────────────────────────────────────────────────
 orchestrator-setup:
@@ -69,28 +67,23 @@ pipeline-resume:
 	cd prototype-orchestrator && npm run pipeline -- resume "$(THREAD)"
 
 pipeline-dashboard:
-	docker compose -f prototype-orchestrator/docker-compose.yml up --build
+	cd prototype-orchestrator && npm run dashboard
 ```
-# Windows
-```makefile
-# ─── Pipeline ─────────────────────────────────────────────────────────────────
-orchestrator-setup:
-	git submodule update --init
-      .\prototype-orchestrator\setup.ps1
 
-pipeline-install:
-	cd prototype-orchestrator && npm install
+# Windows (PowerShell — run these manually, no make required)
+```powershell
+# Setup
+git submodule update --init
+.\prototype-orchestrator\setup.ps1
 
-pipeline-start:
-	@test -n "$(FEATURE)" || (echo "Usage: make pipeline-start FEATURE=\"<flow name>\" [SCOPE=backend|mobile|both]"; exit 1)
-	cd prototype-orchestrator && npm run pipeline -- start "$(FEATURE)" $(if $(SCOPE),--scope $(SCOPE),)
+# Start pipeline
+cd prototype-orchestrator; npm run pipeline -- start "Feature Name"
 
-pipeline-resume:
-	@test -n "$(THREAD)" || (echo "Usage: make pipeline-resume THREAD=<threadId>"; exit 1)
-	cd prototype-orchestrator && npm run pipeline -- resume "$(THREAD)"
+# Resume pipeline
+cd prototype-orchestrator; npm run pipeline -- resume <threadId>
 
-pipeline-dashboard:
-	docker compose -f prototype-orchestrator/docker-compose.yml up --build
+# Start dashboard
+cd prototype-orchestrator; npm run dashboard
 ```
 
 ### 2. Runtime data directory
@@ -163,16 +156,20 @@ cp prototype-orchestrator/.env.example prototype-orchestrator/.env
 
 ## Configuration
 
-| Variable | Description | Default |
+| Variable | Required | Description |
 |---|---|---|
-| `PIPELINE_DATA_DIR` | Where runtime data is stored, relative to `prototype-orchestrator/` | `../orchestrator_logs` |
-| `HAS_DESIGN` | `true` if project has a Figma file; `false` for proposal-based projects | `true` |
-| `SKIP_ENV_CHECK` | Skip the environment validation step | `false` |
-| `FIGMA_FILE_KEY` | Required when `HAS_DESIGN=true` | — |
-| `PIPELINE_DASHBOARD_PORT` | Dashboard port | `4242` |
-| `NOTIFICATIONS_DISABLED` | Suppress all notifications | `false` |
+| `PIPELINE_DATA_DIR` | No | Where runtime data is stored, relative to `prototype-orchestrator/`. Default: `../orchestrator_logs` |
+| `HAS_DESIGN` | No | `true` if project has a Figma file; `false` for proposal-based projects. Default: `true` |
+| `SKIP_ENV_CHECK` | No | Skip the environment validation step. Default: `false` |
+| `FIGMA_FILE_KEY` | When `HAS_DESIGN=true` | Figma file key for the project |
+| `PIPELINE_DASHBOARD_PORT` | No | Dashboard port. Default: `4242` |
+| `NOTIFICATIONS_DISABLED` | No | Suppress all notifications. Default: `false` |
 
-`prototype-orchestrator/.env` is gitignored — each project keeps its own copy.
+`prototype-orchestrator/.env` is gitignored — each project keeps its own copy. Start from the example:
+
+```bash
+cp prototype-orchestrator/.env.example prototype-orchestrator/.env
+```
 
 To override which Claude model each agent uses, edit `prototype-orchestrator/pipeline.config.json`:
 
@@ -208,7 +205,7 @@ The thread ID is printed to the terminal on start and is visible in the dashboar
 ## Pipeline Flow
 
 ```
-environment-checker           Verify Docker, Postgres, Node ≥ 20, npm, env vars, git clean
+environment-checker           Verify Postgres, Node ≥ 20, pnpm, env vars, git clean
       ↓
 design-analyst-flow           Figma → docs/blueprint/flows/<slug>.md
   (skipped when HAS_DESIGN=false)

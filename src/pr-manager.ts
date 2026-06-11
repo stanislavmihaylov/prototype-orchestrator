@@ -22,13 +22,17 @@ function git(args: string, cwd: string) {
   return sh(`git ${args}`, cwd)
 }
 
-const ORCHESTRATOR_RUNTIME_PATHS = /^.{2} orchestrator\/(interactions|runs|logs|responses)\//
-
 function verifyCleanTree(projectRoot: string): void {
-  const r = git('status --porcelain', projectRoot)
-  const dirty = r.stdout
+  // Use spawnSync directly — sh() trims the whole stdout which strips the leading space from the
+  // first porcelain line, making fixed-position slicing unreliable.
+  const r = spawnSync('git', ['status', '--porcelain'], { encoding: 'utf8', cwd: projectRoot })
+  const dirty = (r.stdout ?? '')
     .split('\n')
-    .filter(l => l.trim() && !ORCHESTRATOR_RUNTIME_PATHS.test(l))
+    .filter(l => {
+      if (!l.trim()) return false
+      const path = l.slice(3)  // skip XY (2 chars) + separator space
+      return !path.startsWith('orchestrator_logs/') && path !== 'prototype-orchestrator'
+    })
   if (dirty.length) throw new Error(`Uncommitted changes detected — please commit or stash before creating the PR:\n${dirty.join('\n')}`)
 }
 
@@ -139,10 +143,24 @@ function checkExistingPr(projectRoot: string): { url: string; title: string } | 
   return null
 }
 
+function commitOrchestratorLogs(projectRoot: string): void {
+  const r = spawnSync('git', ['status', '--porcelain'], { encoding: 'utf8', cwd: projectRoot })
+  const hasLogs = (r.stdout ?? '').split('\n').some(l => {
+    const path = l.slice(3)
+    return path.startsWith('orchestrator_logs/')
+  })
+  if (!hasLogs) return
+  spawnSync('git', ['add', 'orchestrator_logs/'], { cwd: projectRoot, encoding: 'utf8' })
+  spawnSync('git', ['commit', '-m', 'chore(orchestrator): update pipeline run logs'], {
+    cwd: projectRoot, encoding: 'utf8',
+  })
+}
+
 export function createPr(projectRoot: string, featureSlug: string, featureDescription: string): PrResult {
   const ghAuth = sh('gh auth status 2>&1', projectRoot)
   if (!ghAuth.ok) throw new Error('gh CLI is not authenticated. Run: gh auth login')
 
+  commitOrchestratorLogs(projectRoot)
   verifyCleanTree(projectRoot)
   const branch = verifyBranch(projectRoot)
   pushBranch(projectRoot, branch)

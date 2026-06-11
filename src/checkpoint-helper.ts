@@ -15,7 +15,7 @@ import { join, resolve } from 'path'
 import { BLENDED_RATE, computeCost, modelTier } from './common/pricing'
 
 const ORCH_DIR          = join(__dirname, '..')
-const DATA_DIR          = process.env.PIPELINE_DATA_DIR ? resolve(process.env.PIPELINE_DATA_DIR) : ORCH_DIR
+const DATA_DIR          = process.env.PIPELINE_DATA_DIR ? resolve(ORCH_DIR, process.env.PIPELINE_DATA_DIR) : ORCH_DIR
 const RUNS_DIR          = join(DATA_DIR, 'runs')
 const INTERACTIONS_DIR  = join(DATA_DIR, 'interactions')
 

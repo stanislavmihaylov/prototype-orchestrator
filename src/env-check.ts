@@ -116,37 +116,11 @@ function checkDocker(): CheckResult {
   const r = sh('docker info 2>/dev/null')
   if (!r.ok) {
     return {
-      name: 'Docker running', status: 'FAIL',
-      notes: 'Docker daemon not reachable',
-      fix:   'Start Docker Desktop (or `open -a Docker` on macOS)',
+      name: 'Docker running', status: 'WARN',
+      notes: 'Docker daemon not reachable — skipping container checks',
     }
   }
   return { name: 'Docker running', status: 'PASS', notes: 'daemon reachable' }
-}
-
-function checkDbContainer(): CheckResult {
-  const list = sh('docker ps --format "{{.Names}}" 2>/dev/null')
-  if (list.stdout.split('\n').includes('claims-db')) {
-    return { name: 'claims-db container', status: 'PASS', notes: 'running' }
-  }
-
-  // Container exists but is stopped
-  const all = sh('docker ps -a --format "{{.Names}}" 2>/dev/null')
-  if (all.stdout.split('\n').includes('claims-db')) {
-    const start = sh('docker start claims-db 2>/dev/null')
-    if (start.ok) return { name: 'claims-db container', status: 'PASS', notes: 'was stopped — started automatically' }
-    return {
-      name: 'claims-db container', status: 'FAIL',
-      notes: 'container exists but could not be started',
-      fix:   'docker start claims-db',
-    }
-  }
-
-  return {
-    name: 'claims-db container', status: 'FAIL',
-    notes: 'container does not exist',
-    fix:   'make db-up  (creates and starts the Postgres container)',
-  }
 }
 
 function checkDbConnection(projectRoot: string): CheckResult {
@@ -154,7 +128,8 @@ function checkDbConnection(projectRoot: string): CheckResult {
   const envFile  = join(projectRoot, '.env')
   const path     = existsSync(localEnv) ? localEnv : envFile
   const envVars  = readEnvFile(path)
-  const url      = envVars['DATABASE_URL']
+  // process.env.DATABASE_URL takes precedence — set by loadDotEnv from orchestrator's .env if present
+  const url      = process.env.DATABASE_URL ?? envVars['DATABASE_URL']
 
   if (!url || url.includes('USER:PASSWORD')) {
     return { name: 'DB connection', status: 'WARN', notes: 'DATABASE_URL not set — skipping connectivity check' }
@@ -172,7 +147,7 @@ function checkDbConnection(projectRoot: string): CheckResult {
   return {
     name: 'DB connection', status: 'FAIL',
     notes: `cannot connect: ${(r.stderr || r.stdout).slice(0, 120)}`,
-    fix:   'Ensure claims-db container is running: make db-start',
+    fix:   'Ensure the database is running and DATABASE_URL is correct',
   }
 }
 
@@ -216,7 +191,6 @@ export function runEnvCheck(projectRoot: string, featureSlug: string): EnvCheckR
     checkAppDeps(projectRoot),
     checkPrismaGenerated(projectRoot),
     checkDocker(),
-    checkDbContainer(),
     checkDbConnection(projectRoot),
     checkGitClean(projectRoot),
     checkFeatureBranch(projectRoot, featureSlug),

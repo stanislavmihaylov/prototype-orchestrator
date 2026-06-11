@@ -43,7 +43,7 @@ const CLAUDE_DIR    = join(PROJECT_ROOT, '.claude')
 const TSX           = join(ORCH_DIR, 'node_modules', '.bin', 'tsx')
 const CHECKPOINT    = join(__dirname, 'checkpoint-helper.ts')
 const NOTIFY        = join(__dirname, 'notify.ts')
-const DATA_DIR      = process.env.PIPELINE_DATA_DIR ? resolve(process.env.PIPELINE_DATA_DIR) : ORCH_DIR
+const DATA_DIR      = process.env.PIPELINE_DATA_DIR ? resolve(ORCH_DIR, process.env.PIPELINE_DATA_DIR) : ORCH_DIR
 const RUNS_DIR      = join(DATA_DIR, 'runs')
 const RESPONSES_DIR = join(DATA_DIR, 'responses')
 
@@ -150,10 +150,11 @@ function runAgent(agentName: string, prompt: string): AgentResult {
     timeout: 30 * 60 * 1000,
     cwd: PROJECT_ROOT,
     env: { ...process.env },
-    stdio: ['ignore', 'pipe', 'inherit'],
+    stdio: ['ignore', 'pipe', 'pipe'],
   })
 
   const durationMs = Date.now() - startMs
+
   if (r.error) throw new Error(`Agent ${agentName} spawn error: ${r.error.message}`)
 
   let output = ''
@@ -208,6 +209,7 @@ const TRANSIENT_PATTERNS = [
 
 function isTransientError(r: AgentResult): boolean {
   if (r.isError) return true
+  if (!r.output.trim()) return true  // exit 0 but no output = silent API failure, worth retrying
   return TRANSIENT_PATTERNS.some(p => p.test(r.output))
 }
 
@@ -308,7 +310,7 @@ async function stepEnvironmentCheck(threadId: string, featureSlug: string): Prom
   finishNode(threadId, 'environment_check', fakeResult, passed)
 
   if (!passed) {
-    ch('error', threadId, 'environment_check', summary.slice(0, 500))
+    ch('error', threadId, 'environment_check', summary.slice(0, 2000))
     ch('state', threadId, 'status', 'failed')
     ch('state', threadId, 'errorMessage', 'Environment check failed')
     notify('Pipeline failed', 'Environment check failed.', 'error', threadId)
