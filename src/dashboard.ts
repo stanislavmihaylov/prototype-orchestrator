@@ -10,13 +10,13 @@ const INTERACTIONS_DIR = join(DATA_DIR, 'interactions')
 const RESPONSES_DIR    = join(DATA_DIR, 'responses')
 const TSX              = join(__dirname, '..', 'node_modules', '.bin', 'tsx')
 const PIPELINE_SCRIPT  = join(__dirname, 'pipeline.ts')
-const PROJECT_ROOT     = join(__dirname, '..', '..')    // orchestrator/ sits at the repo root
+const PROJECT_ROOT     = join(__dirname, '..', '..')    // prototype-orchestrator/ sits at the repo root
 const CLAUDE_DIR       = join(PROJECT_ROOT, '.claude')
 const PORT = parseInt(process.env.PIPELINE_DASHBOARD_PORT ?? '4242', 10)
 
 if (!existsSync(CLAUDE_DIR)) {
   console.error(`[orchestrator] FATAL: .claude directory not found at ${CLAUDE_DIR}`)
-  console.error('The orchestrator/ folder must sit next to .claude/ in the repo root.')
+  console.error('The prototype-orchestrator/ folder must sit next to .claude/ in the repo root.')
   process.exit(1)
 }
 

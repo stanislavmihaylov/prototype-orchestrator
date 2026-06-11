@@ -3,8 +3,8 @@
  * pipeline.ts — Standalone Node.js SDLC pipeline orchestrator.
  *
  * Usage (from project root or via ./pipeline):
- *   tsx orchestrator/src/pipeline.ts start "Feature Name" [--scope backend|mobile|both]
- *   tsx orchestrator/src/pipeline.ts resume <threadId>
+ *   tsx prototype-orchestrator/src/pipeline.ts start "Feature Name" [--scope backend|mobile|both]
+ *   tsx prototype-orchestrator/src/pipeline.ts resume <threadId>
  *
  * Interaction modes:
  *   TTY (./pipeline start ...):  interrupt prompts appear inline in the terminal
@@ -20,7 +20,7 @@ import { computeCost } from './common/pricing'
 import { runEnvCheck } from './env-check'
 import { createPr } from './pr-manager'
 
-// Load orchestrator/.env before any process.env reads (existing vars take precedence)
+// Load prototype-orchestrator/.env before any process.env reads (existing vars take precedence)
 ;(function loadDotEnv() {
   const envPath = join(resolve(__dirname, '..'), '.env')
   if (!existsSync(envPath)) return
@@ -38,7 +38,7 @@ import { createPr } from './pr-manager'
 // ─── Paths ────────────────────────────────────────────────────────────────────
 
 const ORCH_DIR      = resolve(__dirname, '..')
-const PROJECT_ROOT  = resolve(ORCH_DIR, '..')           // orchestrator/ sits at the repo root
+const PROJECT_ROOT  = resolve(ORCH_DIR, '..')           // prototype-orchestrator/ sits at the repo root
 const CLAUDE_DIR    = join(PROJECT_ROOT, '.claude')
 const TSX           = join(ORCH_DIR, 'node_modules', '.bin', 'tsx')
 const CHECKPOINT    = join(__dirname, 'checkpoint-helper.ts')
@@ -49,7 +49,7 @@ const RESPONSES_DIR = join(DATA_DIR, 'responses')
 
 if (!existsSync(CLAUDE_DIR)) {
   console.error(`[orchestrator] FATAL: .claude directory not found at ${CLAUDE_DIR}`)
-  console.error('The orchestrator/ folder must sit next to .claude/ in the repo root.')
+  console.error('The prototype-orchestrator/ folder must sit next to .claude/ in the repo root.')
   process.exit(1)
 }
 

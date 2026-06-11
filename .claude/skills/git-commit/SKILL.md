@@ -35,7 +35,7 @@ All three parts are required. Keep the full message under 72 characters.
 | `backend` | Changes in `apps/backend/` |
 | `mobile` | Changes in `apps/mobile/` |
 | `types` | Changes in `packages/types/` |
-| `orchestrator` | Changes in `orchestrator/` |
+| `orchestrator` | Changes in `prototype-orchestrator/` |
 | `agents` | Changes in `.claude/agents/` |
 | `deps` | Dependency updates (`package.json`, `pnpm-lock.yaml`) |
 

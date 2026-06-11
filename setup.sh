@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Run from the consuming project root: sh orchestrator/setup.sh
+# Run from the consuming project root: sh prototype-orchestrator/setup.sh
 ORCH_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(dirname "$ORCH_DIR")"
 
@@ -11,6 +11,6 @@ else
   echo "Linked .claude → $ORCH_DIR/.claude"
 fi
 
-# Install orchestrator dependencies
+# Install prototype-orchestrator dependencies
 cd "$ORCH_DIR" && npm install
-echo "Orchestrator ready."
+echo "Prototype Orchestrator ready."

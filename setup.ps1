@@ -1,4 +1,4 @@
-# Run from the consuming project root: .\orchestrator\setup.ps1
+# Run from the consuming project root: .\prototype-orchestrator\setup.ps1
 $orchDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $projectRoot = Split-Path -Parent $orchDir
 
@@ -11,4 +11,4 @@ if (Test-Path "$projectRoot\.claude") {
 
 Set-Location $orchDir
 npm install
-Write-Host "Orchestrator ready."
+Write-Host "Prototype Orchestrator ready."

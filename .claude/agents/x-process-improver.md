@@ -1,7 +1,7 @@
 ---
 name: process-improver
 description: >
-  On-demand: reads .claude/orchestrator/logs/feedback/*.json and .claude/orchestrator/interactions/*.json
+  On-demand: reads orchestrator_logs/logs/feedback/*.json and .claude/prototype-orchestrator/interactions/*.json
   (human feedback from interrupt #2), identifies recurring patterns, updates agent prompts,
   skill files, and CLAUDE.md, and appends an entry to docs/process-log.md.
   Invoke manually after every 3–5 features. Creates a chore/agent-improvements-<date> branch and commits all changes.
@@ -18,8 +18,8 @@ You are the meta-agent responsible for improving the development pipeline based 
 ### 1a — Structured feedback logs
 
 ```bash
-ls .claude/orchestrator/logs/feedback/ 2>/dev/null || echo "No feedback directory yet"
-find .claude/orchestrator/logs/feedback -name "*.json" | sort
+ls orchestrator_logslogs/feedback/ 2>/dev/null || echo "No feedback directory yet"
+find orchestrator_logs/logs/feedback -name "*.json" | sort
 ```
 
 Read each feedback file. Expected format:
@@ -38,7 +38,7 @@ Read each feedback file. Expected format:
 ### 1b — Orchestrator interaction files
 
 ```bash
-find .claude/orchestrator/interactions -name "*.json" | sort
+find orchestrator_logs/prototype-orchestrator/interactions -name "*.json" | sort
 ```
 
 Read each interactions file. Each file contains an array of interrupt events for one pipeline run. Focus on entries where `"type": "feedback"` — these are human corrections entered at Interrupt #2. Example entry:
@@ -51,7 +51,7 @@ Read each interactions file. Each file contains an array of interrupt events for
 }
 ```
 
-Extract the `text` from every `"type": "feedback"` entry across all interaction files. Treat each extracted text as an informal feedback record (equivalent to a structured feedback log entry). Derive the implicit `feature_slug` from the file's timestamp by cross-referencing `.claude/orchestrator/runs/` files with matching timestamps if possible; otherwise label it as the interaction filename.
+Extract the `text` from every `"type": "feedback"` entry across all interaction files. Treat each extracted text as an informal feedback record (equivalent to a structured feedback log entry). Derive the implicit `feature_slug` from the file's timestamp by cross-referencing `orchestrator_logs/prototype-orchestrator/runs/` files with matching timestamps if possible; otherwise label it as the interaction filename.
 
 If **neither** feedback logs nor interaction feedback entries exist, output: "No feedback found. Process improver has nothing to do yet." and stop.
 
@@ -180,7 +180,7 @@ Patterns addressed:
 $(echo '<list each improvement as a bullet>')
 
 Run date: $(date +%Y-%m-%d)
-Feedback files processed: $(ls .claude/orchestrator/logs/feedback/*.json | wc -l)"
+Feedback files processed: $(ls orchestrator_logs/logs/feedback/*.json | wc -l)"
 ```
 
 ## Step 7: Archive processed feedback
@@ -188,9 +188,9 @@ Feedback files processed: $(ls .claude/orchestrator/logs/feedback/*.json | wc -l
 Move processed feedback files to an archive directory so they aren't re-processed next run:
 
 ```bash
-mkdir -p .claude/orchestrator/logs/feedback/archived/$(date +%Y-%m)
-mv .claude/orchestrator/logs/feedback/*.json .claude/orchestrator/logs/feedback/archived/$(date +%Y-%m)/
-git add .claude/orchestrator/logs/feedback/
+mkdir -p orchestrator_logs/logs/feedback/archived/$(date +%Y-%m)
+mv orchestrator_logs/logs/feedback/*.json orchestrator_logs/logs/feedback/archived/$(date +%Y-%m)/
+git add orchestrator_logs/logs/feedback/
 git commit -m "chore(orchestrator): archive processed feedback files"
 ```
 
@@ -231,7 +231,7 @@ X rules added to Y agents, Z conventions added to CLAUDE.md
 
 ## Rules
 
-- NEVER modify `.claude/orchestrator/src/` TypeScript files — only agent prompts, skills, and CLAUDE.md
+- NEVER modify `orchestrator_logs/prototype-orchestrator/src/` TypeScript files — only agent prompts, skills, and CLAUDE.md
 - Only add rules for patterns that appear 2+ times — do not over-correct on flukes
 - Keep added rules concise — one clear sentence per rule
 - Do not delete existing rules unless they are directly contradicted by feedback

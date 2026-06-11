@@ -54,23 +54,23 @@ Add these targets and extend your existing `setup` target:
 orchestrator-setup:
 	git submodule update --init
       # unix
-	sh orchestrator/setup.sh 
+	sh prototype-orchestrator/setup.sh 
       # windows
-      .\orchestrator\setup.ps1
+      .\prototype-orchestrator\setup.ps1
 
 pipeline-install:
-	cd orchestrator && npm install
+	cd prototype-orchestrator && npm install
 
 pipeline-start:
 	@test -n "$(FEATURE)" || (echo "Usage: make pipeline-start FEATURE=\"<flow name>\" [SCOPE=backend|mobile|both]"; exit 1)
-	cd orchestrator && npm run pipeline -- start "$(FEATURE)" $(if $(SCOPE),--scope $(SCOPE),)
+	cd prototype-orchestrator && npm run pipeline -- start "$(FEATURE)" $(if $(SCOPE),--scope $(SCOPE),)
 
 pipeline-resume:
 	@test -n "$(THREAD)" || (echo "Usage: make pipeline-resume THREAD=<threadId>"; exit 1)
-	cd orchestrator && npm run pipeline -- resume "$(THREAD)"
+	cd prototype-orchestrator && npm run pipeline -- resume "$(THREAD)"
 
 pipeline-dashboard:
-	docker compose -f orchestrator/docker-compose.yml up --build
+	docker compose -f prototype-orchestrator/docker-compose.yml up --build
 ```
 
 
@@ -89,7 +89,7 @@ Do **not** add `orchestrator_logs/` to `.gitignore`.
 Add the submodule directory so git treats it as a pointer rather than a regular folder:
 
 ```gitignore
-/orchestrator/
+/prototype-orchestrator/
 ```
 
 ---
@@ -110,20 +110,20 @@ git submodule update --init
 Then create your local config:
 
 ```bash
-cp orchestrator/.env.example orchestrator/.env
-# Edit orchestrator/.env with project-specific values
+cp prototype-orchestrator/.env.example prototype-orchestrator/.env
+# Edit prototype-orchestrator/.env with project-specific values
 ```
 
 What `setup.sh` / `setup.ps1` does:
-1. Creates a symlink (Unix) or junction (Windows) from `.claude/` in your project root → `orchestrator/.claude/`
-2. Runs `npm install` inside the orchestrator directory
+1. Creates a symlink (Unix) or junction (Windows) from `.claude/` in your project root → `prototype-orchestrator/.claude/`
+2. Runs `npm install` inside the prototype-orchestrator directory
 
 After setup your project root will look like this:
 
 ```
 project-root/
-  .claude/                ← symlink → orchestrator/.claude/
-  orchestrator/           ← submodule
+  .claude/                ← symlink → prototype-orchestrator/.claude/
+  prototype-orchestrator/           ← submodule
   orchestrator_logs/
     runs/
     interactions/
@@ -137,7 +137,7 @@ project-root/
 ```bash
 git clone --recurse-submodules <repo-url>
 make orchestrator-setup
-cp orchestrator/.env.example orchestrator/.env
+cp prototype-orchestrator/.env.example prototype-orchestrator/.env
 ```
 
 ---
@@ -146,16 +146,16 @@ cp orchestrator/.env.example orchestrator/.env
 
 | Variable | Description | Default |
 |---|---|---|
-| `PIPELINE_DATA_DIR` | Where runtime data is stored, relative to `orchestrator/` | `../orchestrator_logs` |
+| `PIPELINE_DATA_DIR` | Where runtime data is stored, relative to `prototype-orchestrator/` | `../orchestrator_logs` |
 | `HAS_DESIGN` | `true` if project has a Figma file; `false` for proposal-based projects | `true` |
 | `SKIP_ENV_CHECK` | Skip the environment validation step | `false` |
 | `FIGMA_FILE_KEY` | Required when `HAS_DESIGN=true` | — |
 | `PIPELINE_DASHBOARD_PORT` | Dashboard port | `4242` |
 | `NOTIFICATIONS_DISABLED` | Suppress all notifications | `false` |
 
-`orchestrator/.env` is gitignored — each project keeps its own copy.
+`prototype-orchestrator/.env` is gitignored — each project keeps its own copy.
 
-To override which Claude model each agent uses, edit `orchestrator/pipeline.config.json`:
+To override which Claude model each agent uses, edit `prototype-orchestrator/pipeline.config.json`:
 
 ```json
 {
@@ -252,7 +252,7 @@ git commit -m "chore: update orchestrator submodule"
 git push
 ```
 
-After updating, check `orchestrator/.env.example` for any new variables to add to your local `.env`.
+After updating, check `prototype-orchestrator/.env.example` for any new variables to add to your local `.env`.
 
 ---
 
@@ -279,7 +279,7 @@ git commit -m "chore: update orchestrator submodule"
 git push
 ```
 
-Never commit orchestrator source changes from the consuming project root — they update only the submodule pointer, not the orchestrator repo itself.
+Never commit prototype-orchestrator source changes from the consuming project root — they update only the submodule pointer, not the prototype-orchestrator repo itself.
 
 ---
 
@@ -311,4 +311,4 @@ For Office 365: `SMTP_HOST=smtp.office365.com`, `SMTP_PORT=587`.
 | `pr-manager` | Haiku |
 | All on-demand agents | Sonnet |
 
-Override any assignment in `orchestrator/pipeline.config.json`.
+Override any assignment in `prototype-orchestrator/pipeline.config.json`.

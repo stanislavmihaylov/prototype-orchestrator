@@ -326,7 +326,7 @@ if (cmd === 'create') {
 
 } else if (cmd === 'feedback') {
   // feedback <threadId> <type: review_finding|plan_rejection> <featureSlug> <agent> <...description>
-  // Creates/overwrites .claude/orchestrator/logs/feedback/<threadId>-<type>.json
+  // Creates/overwrites orchestrator_logs/logs/feedback/<threadId>-<type>.json
   const [threadId, type, featureSlug, agent, ...descParts] = args
   const description = descParts.join(' ').slice(0, 500)
   const FEEDBACK_DIR = join(DATA_DIR, 'logs', 'feedback')
