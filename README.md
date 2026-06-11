@@ -241,14 +241,14 @@ Invoked manually via the Claude Code CLI, outside the pipeline:
 
 ```bash
 # Pull latest from the orchestrator repo
-git submodule update --remote orchestrator
+git submodule update --remote prototype-orchestrator
 
 # Review what changed
-git diff orchestrator
+git diff prototype-orchestrator
 
 # Commit the updated pin
-git add orchestrator
-git commit -m "chore: update orchestrator submodule"
+git add prototype-orchestrator
+git commit -m "chore: update prototype-orchestrator submodule"
 git push
 ```
 
