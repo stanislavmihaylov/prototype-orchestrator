@@ -526,13 +526,17 @@ function handleUpdate(newRuns) {
   if (selectedThread) {
     const run = runs.find(r => r.threadId === selectedThread)
     if (!run) return
-    const serial = JSON.stringify({ nodes: run.nodes?.length, status: run.state?.status, totals: run.totals?.updatedAt })
+    const hasQuestions = !!(run.state?.openQuestions?.length)
+    const serial = JSON.stringify({ nodes: run.nodes?.length, status: run.state?.status, totals: run.totals?.updatedAt, hasQuestions })
     if (serial === lastDetailData[selectedThread]) return
     const prevSerial = lastDetailData[selectedThread]
     lastDetailData[selectedThread] = serial
 
-    const prevStatus = prevSerial ? JSON.parse('{' + prevSerial.slice(1, -1).split(',').find(s => s.includes('status')) + '}').status : null
-    if (isWaiting(run) && prevStatus === run.state?.status) {
+    let prevStatus = null, prevHasQuestions = null
+    if (prevSerial) {
+      try { const p = JSON.parse(prevSerial); prevStatus = p.status; prevHasQuestions = p.hasQuestions } catch {}
+    }
+    if (isWaiting(run) && prevStatus === run.state?.status && prevHasQuestions === hasQuestions) {
       softUpdateStats(run)
     } else {
       renderDetail(run)

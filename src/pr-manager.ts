@@ -143,6 +143,26 @@ function checkExistingPr(projectRoot: string): { url: string; title: string } | 
   return null
 }
 
+function commitUnstagedFeatureChanges(projectRoot: string, featureSlug: string): void {
+  const r = spawnSync('git', ['status', '--porcelain'], { encoding: 'utf8', cwd: projectRoot })
+  const featureLines = (r.stdout ?? '').split('\n').filter(l => {
+    if (!l.trim()) return false
+    const p = l.slice(3)
+    return !p.startsWith('orchestrator_logs/') && p !== 'prototype-orchestrator'
+  })
+  if (!featureLines.length) return
+  console.log(`[pr-manager] Auto-committing ${featureLines.length} uncommitted file(s)…`)
+  spawnSync('git', ['add', '-A'], { cwd: projectRoot, encoding: 'utf8' })
+  // Unstage orchestrator_logs and the submodule — those get their own commit.
+  spawnSync('git', ['reset', 'HEAD', '--', 'orchestrator_logs/', 'prototype-orchestrator'], {
+    cwd: projectRoot, encoding: 'utf8',
+  })
+  const c = spawnSync('git', ['commit', '-m', `chore(${featureSlug}): commit remaining implementation changes`], {
+    cwd: projectRoot, encoding: 'utf8',
+  })
+  if (c.status !== 0) console.warn(`[pr-manager] Auto-commit warning: ${(c.stderr ?? '').trim()}`)
+}
+
 function commitOrchestratorLogs(projectRoot: string): void {
   const r = spawnSync('git', ['status', '--porcelain'], { encoding: 'utf8', cwd: projectRoot })
   const hasLogs = (r.stdout ?? '').split('\n').some(l => {
@@ -160,6 +180,7 @@ export function createPr(projectRoot: string, featureSlug: string, featureDescri
   const ghAuth = sh('gh auth status 2>&1', projectRoot)
   if (!ghAuth.ok) throw new Error('gh CLI is not authenticated. Run: gh auth login')
 
+  commitUnstagedFeatureChanges(projectRoot, featureSlug)
   commitOrchestratorLogs(projectRoot)
   verifyCleanTree(projectRoot)
   const branch = verifyBranch(projectRoot)

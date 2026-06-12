@@ -95,7 +95,7 @@ const AGENT_MODELS: Record<string, string> = loadPipelineConfig()
 // ─── Checkpoint helper shim ───────────────────────────────────────────────────
 
 function ch(...args: string[]): string {
-  const r = spawnSync(TSX, [CHECKPOINT, ...args], {
+  const r = spawnSync(process.execPath, [TSX, CHECKPOINT, ...args], {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'inherit'],
     cwd: ORCH_DIR,
@@ -107,7 +107,7 @@ function ch(...args: string[]): string {
 // ─── Notifications ────────────────────────────────────────────────────────────
 
 function notify(title: string, body: string, level: 'info' | 'warning' | 'error', threadId: string): void {
-  spawnSync(TSX, [NOTIFY, title, body, level, threadId], {
+  spawnSync(process.execPath, [TSX, NOTIFY, title, body, level, threadId], {
     encoding: 'utf8',
     stdio: 'inherit',
     cwd: ORCH_DIR,
@@ -452,6 +452,19 @@ async function stepPrManager(threadId: string, featureSlug: string, featureDescr
   ch('start', threadId, 'pr_manager', 'node:pr-manager', 'n/a')
   const startMs = Date.now()
 
+  // Mark the run as done BEFORE committing/pushing so that commitOrchestratorLogs
+  // inside createPr captures the completed state in the feature branch.
+  const runFilePath = join(RUNS_DIR, `${threadId}.json`)
+  const runData = JSON.parse(readFileSync(runFilePath, 'utf8'))
+  const nowIso = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z')
+  runData.state.status = 'done'
+  runData.completedAt  = nowIso
+  runData.updatedAt    = nowIso
+  writeFileSync(runFilePath, JSON.stringify(runData, null, 2))
+
+  // Mark feature complete in tasks.md before the PR commit so it lands in the branch.
+  markTaskComplete(featureSlug)
+
   let succeeded = false
   let output = ''
   try {
@@ -479,18 +492,6 @@ async function stepPrManager(threadId: string, featureSlug: string, featureDescr
     notify('Pipeline failed', `PR creation failed: ${output.slice(0, 120)}`, 'error', threadId)
     throw new Error(`PR creation failed:\n${output}`)
   }
-
-  // Mark feature complete in tasks.md — done here in pipeline code so it's
-  // deterministic and never silently skipped by the agent.
-  markTaskComplete(featureSlug)
-
-  const path = join(RUNS_DIR, `${threadId}.json`)
-  const d = JSON.parse(readFileSync(path, 'utf8'))
-  const now = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z')
-  d.state.status = 'done'
-  d.completedAt = now
-  d.updatedAt   = now
-  writeFileSync(path, JSON.stringify(d, null, 2))
 
   notify(`Pipeline complete: ${featureSlug}`, 'PR created. Feature marked done.', 'info', threadId)
   console.log(`\nDone. PR created for ${featureSlug}.`)
