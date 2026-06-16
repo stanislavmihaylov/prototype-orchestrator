@@ -49,14 +49,9 @@ import { createPr } from "./pr-manager";
 const ORCH_DIR = resolve(__dirname, "..");
 const PROJECT_ROOT = resolve(ORCH_DIR, ".."); // prototype-orchestrator/ sits at the repo root
 const CLAUDE_DIR = join(PROJECT_ROOT, ".claude");
-// On Windows, node_modules/.bin/tsx is a POSIX shell-script shim that Node
-// cannot execute (it would be parsed as JS → SyntaxError). Use tsx's real JS
-// CLI entry instead. On Linux/macOS the .bin/tsx symlink resolves to the same
-// file and runs fine under Node.
-const TSX =
-  process.platform === "win32"
-    ? join(ORCH_DIR, "node_modules", "tsx", "dist", "cli.mjs")
-    : join(ORCH_DIR, "node_modules", ".bin", "tsx");
+// Execute tsx from the orchestrator's node_modules so we don't depend on a global install
+// Use cli.mjs instead of bin/tsx so it is compatible with different OS Versions.
+const TSX = join(ORCH_DIR, "node_modules", "tsx", "dist", "cli.mjs");
 const CHECKPOINT = join(__dirname, "checkpoint-helper.ts");
 const NOTIFY = join(__dirname, "notify.ts");
 const DATA_DIR = process.env.PIPELINE_DATA_DIR
