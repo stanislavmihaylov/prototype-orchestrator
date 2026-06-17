@@ -7,38 +7,18 @@ import {
   writeFileSync,
   watch,
 } from "fs";
-import { join, resolve } from "path";
+import { join } from "path";
 import { spawn } from "child_process";
+import { DATA_DIR, loadDotEnv, PROJECT_ROOT, CLAUDE_DIR } from "./common/paths";
 
 // Load prototype-orchestrator/.env before any process.env reads (existing vars take precedence)
-(function loadDotEnv() {
-  const envPath = join(__dirname, "..", ".env");
-  if (!existsSync(envPath)) return;
-  for (const line of readFileSync(envPath, "utf8").split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-    const eq = trimmed.indexOf("=");
-    if (eq < 1) continue;
-    const key = trimmed.slice(0, eq).trim();
-    const val = trimmed
-      .slice(eq + 1)
-      .trim()
-      .replace(/^["']|["']$/g, "");
-    if (!(key in process.env)) process.env[key] = val;
-  }
-})();
+loadDotEnv();
 
-const ORCH_DIR = join(__dirname, "..");
-const DATA_DIR = process.env.PIPELINE_DATA_DIR
-  ? resolve(ORCH_DIR, process.env.PIPELINE_DATA_DIR)
-  : ORCH_DIR;
-const RUNS_DIR = join(DATA_DIR, "runs");
+// Shared path constants (ORCH_DIR, PROJECT_ROOT, CLAUDE_DIR, TSX, DATA_DIR,
+// RUNS_DIR, RESPONSES_DIR) are imported from ./common/paths. File-specific ones:
 const INTERACTIONS_DIR = join(DATA_DIR, "interactions");
 const RESPONSES_DIR = join(DATA_DIR, "responses");
-const TSX = join(__dirname, "..", "node_modules", "tsx", "dist", "cli.mjs");
 const PIPELINE_SCRIPT = join(__dirname, "pipeline.ts");
-const PROJECT_ROOT = join(__dirname, "..", ".."); // prototype-orchestrator/ sits at the repo root
-const CLAUDE_DIR = join(PROJECT_ROOT, ".claude");
 const PORT = parseInt(process.env.PIPELINE_DASHBOARD_PORT ?? "4242", 10);
 
 if (!existsSync(CLAUDE_DIR)) {

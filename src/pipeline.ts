@@ -12,6 +12,16 @@
  *                                     written by the dashboard UI
  */
 
+// paths must be imported first: it loads .env before any process.env reads
+import {
+  ORCH_DIR,
+  PROJECT_ROOT,
+  CLAUDE_DIR,
+  TSX,
+  RUNS_DIR,
+  RESPONSES_DIR,
+  loadDotEnv,
+} from "./common/paths";
 import { spawnSync } from "child_process";
 import {
   readFileSync,
@@ -20,45 +30,18 @@ import {
   unlinkSync,
   mkdirSync,
 } from "fs";
-import { join, resolve } from "path";
+import { join } from "path";
 import * as readline from "readline";
 import { computeCost } from "./common/pricing";
 import { runEnvCheck } from "./env-check";
 import { createPr } from "./pr-manager";
 
-// Load prototype-orchestrator/.env before any process.env reads (existing vars take precedence)
-(function loadDotEnv() {
-  const envPath = join(resolve(__dirname, ".."), ".env");
-  if (!existsSync(envPath)) return;
-  for (const line of readFileSync(envPath, "utf8").split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-    const eq = trimmed.indexOf("=");
-    if (eq < 1) continue;
-    const key = trimmed.slice(0, eq).trim();
-    const val = trimmed
-      .slice(eq + 1)
-      .trim()
-      .replace(/^["']|["']$/g, "");
-    if (!(key in process.env)) process.env[key] = val;
-  }
-})();
+loadDotEnv(); // ensure .env is loaded before any path constants are computed
 
-// ─── Paths ────────────────────────────────────────────────────────────────────
-
-const ORCH_DIR = resolve(__dirname, "..");
-const PROJECT_ROOT = resolve(ORCH_DIR, ".."); // prototype-orchestrator/ sits at the repo root
-const CLAUDE_DIR = join(PROJECT_ROOT, ".claude");
-// Execute tsx from the orchestrator's node_modules so we don't depend on a global install
-// Use cli.mjs instead of bin/tsx so it is compatible with different OS Versions.
-const TSX = join(ORCH_DIR, "node_modules", "tsx", "dist", "cli.mjs");
+// Shared path constants (ORCH_DIR, PROJECT_ROOT, CLAUDE_DIR, TSX, DATA_DIR,
+// RUNS_DIR, RESPONSES_DIR) are imported from ./common/paths. File-specific ones:
 const CHECKPOINT = join(__dirname, "checkpoint-helper.ts");
 const NOTIFY = join(__dirname, "notify.ts");
-const DATA_DIR = process.env.PIPELINE_DATA_DIR
-  ? resolve(ORCH_DIR, process.env.PIPELINE_DATA_DIR)
-  : ORCH_DIR;
-const RUNS_DIR = join(DATA_DIR, "runs");
-const RESPONSES_DIR = join(DATA_DIR, "responses");
 
 if (!existsSync(CLAUDE_DIR)) {
   console.error(
