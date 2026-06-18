@@ -9,10 +9,13 @@ import {
 } from "fs";
 import { join } from "path";
 import { spawn } from "child_process";
-import { DATA_DIR, loadDotEnv, PROJECT_ROOT, CLAUDE_DIR } from "./common/paths";
-
-// Load prototype-orchestrator/.env before any process.env reads (existing vars take precedence)
-loadDotEnv();
+import {
+  DATA_DIR,
+  PROJECT_ROOT,
+  CLAUDE_DIR,
+  RUNS_DIR,
+  TSX,
+} from "./common/paths";
 
 // Shared path constants (ORCH_DIR, PROJECT_ROOT, CLAUDE_DIR, TSX, DATA_DIR,
 // RUNS_DIR, RESPONSES_DIR) are imported from ./common/paths. File-specific ones:

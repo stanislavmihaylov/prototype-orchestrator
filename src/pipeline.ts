@@ -20,7 +20,6 @@ import {
   TSX,
   RUNS_DIR,
   RESPONSES_DIR,
-  loadDotEnv,
 } from "./common/paths";
 import { spawnSync } from "child_process";
 import {
@@ -35,8 +34,6 @@ import * as readline from "readline";
 import { computeCost } from "./common/pricing";
 import { runEnvCheck } from "./env-check";
 import { createPr } from "./pr-manager";
-
-loadDotEnv(); // ensure .env is loaded before any path constants are computed
 
 // Shared path constants (ORCH_DIR, PROJECT_ROOT, CLAUDE_DIR, TSX, DATA_DIR,
 // RUNS_DIR, RESPONSES_DIR) are imported from ./common/paths. File-specific ones:
