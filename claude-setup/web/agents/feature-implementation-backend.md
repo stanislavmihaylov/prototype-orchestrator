@@ -91,19 +91,19 @@ Safety checklist before running migration:
 ### 3b. Run migration
 
 ```bash
-npx prisma migrate dev --name add-<entity-name>
+pnpm prisma migrate dev --name add-<entity-name>
 ```
 
 ### 3c. Regenerate Prisma client
 
 ```bash
-npx prisma generate
+pnpm prisma generate
 ```
 
 ### 3d. Verify migration succeeded
 
 ```bash
-npx prisma migrate status
+pnpm prisma migrate status
 ```
 
 ### 3e. Seed the database

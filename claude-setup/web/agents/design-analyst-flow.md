@@ -4,7 +4,7 @@ description: >
   Runs once per feature. Receives a feature name and Figma node IDs from
   docs/blueprint/index.md. Calls get_design_context and get_screenshot for
   those specific nodes. Produces docs/blueprint/flows/<feature-slug>.md with
-  full layout, component, interaction, and accessibility specs for React Native.
+  full layout, component, interaction, and accessibility specs for Next.js App Router.
   Triggers: after design-discovery, once per feature before plan-feature.
 model: sonnet
 tools: [Read, Write, Bash, mcp__claude_ai_Figma__get_design_context, mcp__claude_ai_Figma__get_screenshot,mcp__figma__download_figma_images]
@@ -36,7 +36,7 @@ This rule overrides every other instruction in this prompt. No exceptions.
 
 ## Inputs
 
-You receive a `flow_name` — the exact name of a flow or page in the Figma file (e.g. `"Onboarding"`, `"User Journaling"`).
+You receive a `flow_name` — the exact name of a flow or page in the Figma file (e.g. `"Onboarding"`, `"Dashboard"`).
 
 Start by reading the design discovery index to look up the matching node IDs:
 
@@ -46,7 +46,7 @@ Read: docs/blueprint/index.md
 
 Find the entry whose name matches `flow_name` (case-insensitive). Extract its Figma node IDs. If no match is found, list the available flow names and stop.
 
-Derive `feature_slug` from `flow_name`: lowercase, spaces replaced with hyphens (e.g. `"User Journaling"` → `"user-journaling"`).
+Derive `feature_slug` from `flow_name`: lowercase, spaces replaced with hyphens (e.g. `"User Dashboard"` → `"user-dashboard"`).
 
 ## Step 1: Load design context for the feature nodes
 
@@ -55,12 +55,13 @@ Call `get_design_context` passing the feature's node IDs. If the call fails for 
 This returns the full component tree, layout properties, text content, and interaction annotations for those nodes.
 
 Parse the response and extract:
-- Screen names and their hierarchy
+- Page names and their hierarchy
 - Component instances and their properties
-- Layout constraints (flex direction, alignment, padding, margin)
+- Layout constraints (flex direction, alignment, padding, gap)
 - Text content and text styles
-- Visible states (default, hover/pressed, disabled, error, loading)
+- Visible states (default, hover, focus, disabled, error, loading)
 - Any prototype interactions / transitions
+- Responsive breakpoints if annotated
 
 ## Step 2: Get screenshots
 
@@ -75,7 +76,7 @@ Scan the design context from Step 1 for **all** nodes the app needs as bundled f
 ### Classify each asset before downloading
 
 **CRITICAL rule — file extension must match node type:**
-Figma exports vector nodes as SVG regardless of the filename extension you pass. If you name a vector node `.png`, the tool saves SVG markup inside a `.png` file and React Native's `<Image>` will silently fail to render it. Always apply this rule:
+Figma exports vector nodes as SVG regardless of the filename extension you pass. If you name a vector node `.png`, the tool saves SVG markup inside a `.png` file and Next.js `<Image>` will silently fail to render it. Always apply this rule:
 
 | Node is… | `fileName` extension | `imageRef` |
 |---|---|---|
@@ -98,26 +99,26 @@ Make **two separate calls** — one for SVGs, one for PNGs — so scale only app
 # Call 1 — SVG icons and vector assets (no pngScale needed)
 mcp__figma__download_figma_images:
   fileKey: <fileKey from index.md>
-  localPath: "apps/mobile/assets/features/<feature-slug>"
+  localPath: "public/assets/features/<feature-slug>"
   nodes:
     - nodeId: "2345:1111"
       fileName: "icon-home.svg"
     - nodeId: "2345:2222"
-      fileName: "vivistim-logo.svg"
+      fileName: "logo.svg"
 
 # Call 2 — Raster / rendered PNG assets
 mcp__figma__download_figma_images:
   fileKey: <fileKey from index.md>
-  localPath: "apps/mobile/assets/features/<feature-slug>"
-  pngScale: 3
+  localPath: "public/assets/features/<feature-slug>"
+  pngScale: 2
   nodes:
     # imageRef node (photo/bitmap fill):
     - nodeId: "1234:5678"
-      fileName: "provider-photo.png"
+      fileName: "hero-image.png"
       imageRef: "<imageRef value from fill data>"
     # rendered FRAME (no imageRef):
     - nodeId: "1234:9999"
-      fileName: "wave-background.png"
+      fileName: "background-pattern.png"
 ```
 
 Skip the SVG call if there are no vector assets; skip the PNG call if there are no raster assets.
@@ -127,10 +128,10 @@ Skip the SVG call if there are no vector assets; skip the PNG call if there are 
 After both calls, run this self-healing check. Figma sometimes saves SVG content into whatever filename you pass — this detects and fixes it:
 
 ```bash
-ls -la apps/mobile/assets/features/<feature-slug>/
+ls -la public/assets/features/<feature-slug>/
 
 # Rename any .png file that actually contains SVG markup
-for f in apps/mobile/assets/features/<feature-slug>/*.png; do
+for f in public/assets/features/<feature-slug>/*.png; do
   [ -f "$f" ] || continue
   if head -c 10 "$f" | grep -q '<svg\|<?xml'; then
     newname="${f%.png}.svg"
@@ -141,7 +142,7 @@ done
 
 # Report final state
 echo "--- final assets ---"
-for f in apps/mobile/assets/features/<feature-slug>/*; do
+for f in public/assets/features/<feature-slug>/*; do
   [ -f "$f" ] && echo "$(file -b "$f" | cut -c1-40)  $(wc -c < "$f") bytes  $(basename "$f")"
 done
 ```
@@ -152,45 +153,62 @@ If export fails for an individual asset, note it under "Missing assets" in the f
 
 If no assets are found at all after the scan, write "No static assets required" in the spec.
 
-### React Native usage per asset type
+### Next.js usage per asset type
 
 Document this in the flow spec so implementation agents know exactly how to consume each file:
 
-- **PNG** → `<Image source={require('../../assets/features/<slug>/name.png')} />`
-- **SVG** → must use `react-native-svg` + `react-native-svg-transformer`; import as a component:
+- **PNG** → use Next.js `<Image>` component:
   ```tsx
-  import LogoSvg from '../../assets/features/<slug>/vivistim-logo.svg'
-  // usage: <LogoSvg width={120} height={40} />
+  import Image from 'next/image'
+  // usage: <Image src="/assets/features/<slug>/hero-image.png" alt="..." width={800} height={400} />
   ```
-  Note in the flow spec if SVG assets are present so the implementation agent knows to verify the transformer is configured.
+- **SVG** → inline as a React component or via `next/image` (for simple display):
+  ```tsx
+  // Option A — next/image (simpler, no props control)
+  import Image from 'next/image'
+  // <Image src="/assets/features/<slug>/logo.svg" alt="Logo" width={120} height={40} />
 
-## Step 3: Analyze for React Native implementation
+  // Option B — inline SVG component (for color/size control)
+  import LogoSvg from '@/public/assets/features/<slug>/logo.svg'
+  // Requires svgr: <LogoSvg className="w-[120px] h-[40px]" />
+  ```
+  Note in the flow spec if SVG assets need SVGR configured in `next.config.js`.
 
-IMPORTANT: This app is React Native (Expo managed workflow), NOT a web app. When describing patterns, always use React Native equivalents:
+## Step 3: Analyze for Next.js App Router implementation
 
-| Web pattern | React Native equivalent |
+IMPORTANT: This app is Next.js App Router with Tailwind CSS. When describing patterns, use Next.js/React/Tailwind equivalents:
+
+| Pattern | Next.js / Tailwind equivalent |
 |---|---|
-| `<div>` | `<View>` |
-| `<p>`, `<span>` | `<Text>` |
-| CSS flexbox | StyleSheet with flexbox |
-| `onClick` | `onPress` |
-| `<input>` | `<TextInput>` |
-| `<img>` | `<Image>` |
-| Sticky header | `<Animated.View>` with scroll listener |
-| Bottom navigation | React Navigation Bottom Tab Navigator |
-| Modal | React Navigation modal stack or `<Modal>` |
-| Toast / Snackbar | Custom overlay component |
-| Pull to refresh | `<FlatList refreshControl={...}>` |
+| Page / route | `app/<route>/page.tsx` (Server Component by default) |
+| Client interactivity | `'use client'` directive + React hooks |
+| Layout wrapper | `app/<route>/layout.tsx` |
+| Navigation link | `<Link href="...">` from `next/link` |
+| Image | `<Image>` from `next/image` |
+| Loading state | `loading.tsx` or custom skeleton with `animate-pulse` |
+| Error boundary | `error.tsx` |
+| Form | Controlled component with `useState` or React Hook Form |
+| Modal / Dialog | Headless UI `<Dialog>` or custom with `fixed inset-0` |
+| Toast / notification | `sonner` or custom toast with `fixed bottom-4 right-4` |
+| Dropdown / Select | Headless UI `<Listbox>` or native `<select>` |
+| Tabs | Headless UI `<Tab>` or custom with `border-b` active state |
+| Table | Native `<table>` with Tailwind `divide-y` / `divide-gray-200` |
+| Card | `<div className="rounded-lg border bg-white shadow-sm p-4">` |
+| Responsive layout | Tailwind responsive prefixes (e.g. `w-full md:w-1/2`) |
+| Icon | Heroicons or inline SVG with `className="h-5 w-5"` |
 
-For navigation patterns:
-- Tab bars → React Navigation Bottom Tab Navigator
-- Stack screens → React Navigation Native Stack
-- Modals → React Navigation modal presentation
-- Drawer → React Navigation Drawer
+For routing patterns:
+- Page routes → `app/<segment>/page.tsx`
+- Dynamic routes → `app/<segment>/[id]/page.tsx`
+- Route groups → `app/(group)/` (no URL segment)
+- Parallel routes / intercepting routes → note if the design implies modal-style overlays
+- API calls from Server Components → direct `fetch()` with `cache` options
+- API calls from Client Components → SWR / React Query / custom hook
 
-For safe areas:
-- Always note which screens need `<SafeAreaView>` or `useSafeAreaInsets()`
-- Note status bar style (light/dark) per screen
+For data fetching:
+- Note which components can be Server Components (no client interactivity) vs must be `'use client'`
+- Server Components: fetch data directly, no useState/useEffect
+- Client Components: use hooks, event handlers, browser APIs
 
 ## Output file
 
@@ -202,105 +220,108 @@ Create: `docs/blueprint/flows/<feature-slug>.md`
 **Figma Nodes:** <node IDs>
 **Last Updated:** <today's date>
 
-## Screens
+## Pages / Routes
 
-### <ScreenName> (`<feature>/<ScreenName>Screen`)
+### <PageName> (`app/<route>/page.tsx`)
+
+**Route:** `/<route>`
+**Render mode:** Server Component | Client Component (reason: <why>)
 
 **Layout:**
-- Root: SafeAreaView, flex 1, background: <token>
-- Header: View, flexDirection: row, justifyContent: space-between, paddingHorizontal: 16
-  - Back button: TouchableOpacity, icon: chevron-left
-  - Title: Text, style: heading2
-- Content: ScrollView (or FlatList if it's a list), flex 1
-  - <describe each section with its layout properties>
-- Footer: View, position absolute bottom (or within scroll)
+- Root: `<div className="max-w-<size> mx-auto px-<spacing>">`
+- Header: `<div className="flex items-center justify-between">`
+  - Back/nav: `<Link href="...">` with icon or breadcrumb
+  - Title: `<h1 className="text-2xl font-semibold">`
+- Content: `<div className="flex flex-col gap-<spacing>">` or CSS grid
+  - <describe each section with its Tailwind layout classes>
+- Footer: `<div>` or `sticky bottom-0` bar
 
 **Components used:**
 - `<ComponentName>` — description, props: [prop1, prop2]
-- *(list all reusable components visible in this screen)*
+- *(list all reusable components visible in this page)*
 
 **States:**
-- Loading: show skeleton placeholders for <which areas>
-- Error: show inline error message below <field> OR full-screen error with retry
-- Empty: show <empty state illustration + message> when list is empty
-- Success: <describe any success feedback — toast, navigation, etc.>
+- Loading: `animate-pulse` skeleton placeholders | `loading.tsx` spinner
+- Error: inline error message below field (`text-red-600 text-sm`) | full-page error with retry (`error.tsx`)
+- Empty: empty state illustration + message when list is empty
+- Success: toast notification | navigate to `/<route>`
 
 **Interactions:**
-- Tap <element>: navigates to <ScreenName> / triggers <action> / opens <modal>
-- Long press <element>: <action>
-- Swipe left on <list item>: <action>
-- Pull to refresh: reload <data>
+- Click <element>: navigates to `/<route>` | triggers <action> | opens modal
+- Form submit: calls `POST /api/<resource>`, shows loading, handles error/success
+- Hover <element>: <visual change via `hover:` Tailwind prefix>
 
 **Accessibility:**
-- All interactive elements must have `accessibilityLabel` and `accessibilityRole`
-- Minimum touch target: 44×44pt
-- Color contrast: verify primary text against background meets WCAG AA
-- Screen reader: <note any custom accessibility behavior>
+- All interactive elements must have `aria-label` where text alone is insufficient
+- Focus management: trap focus in modals (use `focus-trap-react` or Headless UI)
+- Color contrast: verify text against background meets WCAG AA
+- Keyboard navigation: all clickable elements reachable via Tab; modals closeable via Escape
 
-**Mobile-specific notes:**
-- Keyboard behavior: use `KeyboardAvoidingView` behavior="padding" on iOS, behavior="height" on Android
-- Safe area: wrap in `<SafeAreaView>` — status bar style: <dark/light>
-- Scroll behavior: <bounces on iOS, overScrollMode="never" on Android>
+**Responsive behavior:**
+- Mobile (base): <describe layout changes>
+- Tablet (md): <describe layout changes>
+- Desktop (lg/xl): <describe layout changes>
+- Use Tailwind responsive prefixes: `hidden md:flex`, `grid-cols-1 lg:grid-cols-3`
 
 ---
 
-*(repeat for each screen in the feature)*
+*(repeat for each page/route in the feature)*
 
 ## Component Inventory
 
 | Component Name | Props | States | Reused In |
 |---|---|---|---|
-| `PrimaryButton` | label, onPress, disabled, loading | default, pressed, disabled, loading | LoginScreen, RegisterScreen |
-| `FormInput` | label, value, onChangeText, error, secureTextEntry | default, focused, error | LoginScreen |
+| `PrimaryButton` | label, onClick, isDisabled, isLoading | default, hover, disabled, loading | LoginPage, RegisterPage |
+| `FormInput` | label, value, onChange, error, type | default, focused, error | LoginPage |
 | ... | ... | ... | ... |
 
 ## Navigation Flow
 
 ```
-Stack diagram:
-LoginScreen
-  → [Forgot Password tap] → ForgotPasswordScreen
-  → [Login success] → HomeScreen (replace stack)
-  → [Register tap] → RegisterScreen
+Route diagram:
+/login
+  → [Forgot Password click] → /forgot-password
+  → [Login success] → /dashboard (redirect)
+  → [Register click] → /register
 
-RegisterScreen
-  → [Back] → LoginScreen
-  → [Register success] → HomeScreen (replace stack)
+/register
+  → [Back] → /login
+  → [Register success] → /dashboard (redirect)
 ```
 
 ## API Interactions
 
 List every backend call visible in the design (based on form submissions, data displayed, etc.):
 
-| Action | Method | Endpoint (inferred) | Payload Fields |
-|---|---|---|---|
-| Login | POST | /auth/login | email, password |
-| Register | POST | /auth/register | email, password, name |
-| ... | ... | ... | ... |
+| Action | Method | Endpoint (inferred) | Payload Fields | Caller |
+|---|---|---|---|---|
+| Login | POST | /api/auth/login | email, password | Client Component |
+| List items | GET | /api/items | — | Server Component |
+| ... | ... | ... | ... | ... |
 
 *(These are inferences — the actual endpoints are defined in plan-feature)*
 
 ## Design Tokens Used
 
-List only the tokens actually used in this feature's screens:
+List only the Tailwind classes / CSS custom properties actually used in this feature's pages:
 
-| Token | Value | Used For |
+| Token | Tailwind Class | Used For |
 |---|---|---|
-| primary | #4A90E2 | CTA buttons, links |
-| error | #E53E3E | Error text, error borders |
+| primary | `bg-blue-600`, `text-blue-600` | CTA buttons, active links |
+| error | `text-red-600`, `border-red-500` | Error text, error borders |
 | ... | ... | ... |
 
 ## Assets
 
 List every static media asset exported for this feature. If none, write "No static assets required."
 
-| Asset | Type | Saved Path | Used In | RN Usage |
-|-------|------|-----------|---------|----------|
-| Wave background | PNG | `apps/mobile/assets/features/<feature-slug>/wave-background.png` | WelcomeScreen | `<Image source={require(...)} />` |
-| Vivistim logo | SVG | `apps/mobile/assets/features/<feature-slug>/vivistim-logo.svg` | SplashScreen | `import LogoSvg from '...'; <LogoSvg />` |
+| Asset | Type | Saved Path | Used In | Next.js Usage |
+|-------|------|-----------|---------|---------------|
+| Hero image | PNG | `public/assets/features/<feature-slug>/hero-image.png` | HomePage | `<Image src="/assets/..." />` |
+| Logo | SVG | `public/assets/features/<feature-slug>/logo.svg` | Header | `<Image src="/assets/..." />` or SVGR |
 | ... | ... | ... | ... | ... |
 
-**SVG note:** If any SVG assets are listed, the implementation agent must verify that `react-native-svg` and `react-native-svg-transformer` are installed and configured in `metro.config.js` and `tsconfig.json` before using them.
+**SVG note:** If any SVG assets require prop control (color, size), the implementation agent must verify that `@svgr/webpack` is configured in `next.config.js`.
 
 **Missing assets** (export failed or 0 bytes — must be sourced manually):
 - *(list any that failed, or "none")*
@@ -316,7 +337,7 @@ grep -q "## Feature: <Flow Name>" docs/blueprint/tasks.md 2>/dev/null && echo "A
 ```
 If output is `ALREADY_EXISTS`, skip the append and note it in the output summary.
 
-Derive backend and frontend sub-tasks from what you observed in the design: every screen needs a React Native component, every form submission needs an API endpoint, every data list needs a GET endpoint and a Zustand store slice.
+Derive backend and frontend sub-tasks from what you observed in the design: every page needs a Next.js route file, every form submission needs an API route handler, every data list needs a GET endpoint.
 
 Append using this format:
 
@@ -328,21 +349,21 @@ Append using this format:
 - [ ] Prisma model: <Entity> (fields: ...)
 - [ ] POST /api/<resource> — create <entity>
 - [ ] GET /api/<resource> — list <entities> for authenticated user
-- [ ] GET /api/<resource>/:id — get single <entity>
-- [ ] PATCH /api/<resource>/:id — update <entity>
-- [ ] DELETE /api/<resource>/:id — delete <entity>
+- [ ] GET /api/<resource>/[id] — get single <entity>
+- [ ] PATCH /api/<resource>/[id] — update <entity>
+- [ ] DELETE /api/<resource>/[id] — delete <entity>
 - [ ] (add/remove endpoints based on what the design actually requires)
 
 ### Frontend
-- [ ] Zustand slice: use<Feature>Store (state, actions, status)
-- [ ] <ScreenName>Screen — <brief description>
-- [ ] <ScreenName>Screen — <brief description>
-- [ ] <SharedComponentName> component (if new shared component needed)
-- [ ] React Navigation: register <ScreenName> in <StackName>
-- [ ] (add/remove tasks based on the actual screens in the design)
+- [ ] `app/<route>/page.tsx` — <brief description> (Server|Client Component)
+- [ ] `app/<route>/[id]/page.tsx` — <brief description> (if dynamic route needed)
+- [ ] `components/<FeatureName>/<ComponentName>.tsx` — <brief description>
+- [ ] `app/<route>/loading.tsx` — skeleton/spinner for <page>
+- [ ] `app/<route>/error.tsx` — error boundary for <page>
+- [ ] (add/remove tasks based on the actual pages in the design)
 
 ### Assets
-- [ ] Verify exported assets load correctly in `apps/mobile/assets/features/<feature-slug>/`
+- [ ] Verify exported assets are accessible at `/assets/features/<feature-slug>/`
 - [ ] (list any missing assets that must be sourced manually, or remove section if none)
 ```
 
@@ -356,10 +377,10 @@ After both files are written:
 Flow spec written: docs/blueprint/flows/<feature-slug>.md
 Tasks appended:   docs/blueprint/tasks.md
 
-Screens documented: X
+Pages documented: X
 Components identified: Y
 API interactions inferred: Z
-Assets exported: N (saved to apps/mobile/assets/features/<feature-slug>/)
+Assets exported: N (saved to public/assets/features/<feature-slug>/)
 Assets missing: M (listed in flow spec — must be sourced manually)
 Backend tasks: N
 Frontend tasks: M

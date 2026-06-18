@@ -19,47 +19,31 @@ work exclusively in `app/` page and layout files and `components/`. You never to
 
 ## Design system
 
-This project uses **Chakra UI v2** with the **`@mentormate/marigold`** theme:
-
-```tsx
-// components/providers.tsx (already in repo)
-import { ChakraProvider } from '@chakra-ui/react'
-import { theme } from '@mentormate/marigold'
-// ...
-```
-
-**Before writing any UI, check `@mentormate/marigold` for a matching component.**
-Import Chakra UI components directly — never write custom CSS or Tailwind classes.
-
-### Component lookup order
-
-1. **`@mentormate/marigold`** — check for a ready-made themed component first
-2. **`@chakra-ui/react`** — use a Chakra primitive if Marigold has no match
-3. **`components/` (local)** — only build a local wrapper if neither library covers the need
-
-```bash
-# Quick lookup: see what Marigold exports
-node -e "const m = require('@mentormate/marigold'); console.log(Object.keys(m).join('\n'))" 2>/dev/null || true
-```
-
-Common Chakra UI building blocks to reach for:
-`Box`, `Flex`, `Grid`, `Stack`, `HStack`, `VStack`, `Center`,
-`Heading`, `Text`, `Button`, `IconButton`,
-`Input`, `FormControl`, `FormLabel`, `FormErrorMessage`, `Select`, `Textarea`,
-`Table`, `Thead`, `Tbody`, `Tr`, `Th`, `Td`,
-`Modal`, `ModalOverlay`, `ModalContent`, `ModalHeader`, `ModalBody`, `ModalFooter`,
-`Alert`, `AlertIcon`, `Badge`, `Spinner`, `Skeleton`,
-`Tabs`, `Tab`, `TabList`, `TabPanels`, `TabPanel`,
-`Menu`, `MenuButton`, `MenuList`, `MenuItem`,
-`Breadcrumb`, `BreadcrumbItem`, `BreadcrumbLink`
+This project uses **Tailwind CSS + shadcn/ui**. Use shadcn/ui primitives for interactive
+elements and shared layout components for common patterns.
 
 Styling rules:
-- **Never** use Tailwind utility classes — no `className="..."` style strings
-- **Never** use inline `style={{}}` props except for truly one-off layout overrides
-- Use Chakra's style props (`px`, `py`, `mt`, `bg`, `color`, `fontSize`, etc.)
-- Use `useColorModeValue` / theme tokens for colours — never hardcode hex values
-- Use semantic HTML via Chakra's `as` prop (`Box as="header"`, `Text as="p"`, etc.)
-- Include `aria-*` props and `role` attributes for accessibility
+- **Use shadcn/ui primitives** (`<Button>`, `<Input>`, `<Card>`, `<Select>`, `<Dialog>`,
+  `<Badge>`, `<Label>`) from `@/components/ui/` for all interactive elements
+- **Use shared layout components** (`<PageHeader>`, `<EmptyState>`, `<LoadingSpinner>`,
+  `<ErrorMessage>`) from `@/components/layout/` — do not re-implement these
+- **Use Tailwind utility classes** for spacing, layout, and anything not covered by the above
+- **Never** use inline `style={{}}` props except for truly dynamic values (e.g. computed widths)
+- **Never** use CSS modules or global CSS for component styling
+- **Never** hardcode color values — use CSS variable classes from the shadcn theme
+  (`text-foreground`, `text-muted-foreground`, `bg-primary`, `text-destructive`, etc.)
+- Use semantic HTML elements and include `aria-*` / `role` attributes for accessibility
+
+Common layout patterns:
+- Flex row: `flex items-center gap-4`
+- Flex col: `flex flex-col gap-4`
+- Grid: `grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6`
+- Container: `max-w-7xl mx-auto px-4 sm:px-6 lg:px-8`
+- Card: use `<Card>` from `@/components/ui/card`
+- Button: use `<Button>` from `@/components/ui/button` (variants: `default`, `outline`, `ghost`, `destructive`)
+- Input: use `<Input>` from `@/components/ui/input`
+- Error: use `<ErrorMessage message={...} />` from `@/components/layout/ErrorMessage`
+- Loading skeleton: `animate-pulse bg-muted rounded` or use `<LoadingSpinner />` from `@/components/layout/`
 
 ## Step 1: Read plan and flow spec
 
@@ -74,7 +58,7 @@ using the RED→GREEN loop in Step 8.
 **Design fidelity self-check — complete before writing any code:**
 - [ ] Have I read EVERY screen section in `docs/blueprint/flows/<feature-slug>.md`?
 - [ ] Have I noted every asset in the Assets table?
-- [ ] Have I noted the background colour tokens for each page?
+- [ ] Have I noted the background colour / layout tokens for each page?
 - [ ] Have I noted every icon — including per-item icons in tables/lists?
 - [ ] Have I noted the header/nav area for every page (logo, title, back link)?
 
@@ -90,37 +74,37 @@ Read: .claude/skills/api-contracts/SKILL.md
 Read: .claude/skills/test-patterns/SKILL.md
 ```
 
-## Step 2b: Audit existing common code + Marigold exports
+## Step 2b: Audit existing common code
 
 Before writing any new components, scan for patterns to reuse:
 
 ```bash
-# What Marigold exports — check this first
-node -e "const m = require('@mentormate/marigold'); console.log(Object.keys(m).join('\n'))" 2>/dev/null || true
+# shadcn/ui primitives already installed
+ls components/ui/ 2>/dev/null
 
-# Existing local components
-ls components/ 2>/dev/null
-find components -name "*.tsx" | grep -v node_modules | sort
-ls lib/hooks/ 2>/dev/null
+# Shared layout components
+ls components/layout/ 2>/dev/null
 
-# Existing layouts
+# Existing feature components
+find components -name "*.tsx" | grep -v node_modules | grep -v "^components/ui" | sort
+
+# Existing layouts and route groups
 find app -name "layout.tsx" | grep -v node_modules | sort
 ```
 
 Apply these rules before writing anything new:
 
-- **Marigold first.** If `@mentormate/marigold` exports a component that matches the
-  design intent (e.g. `ClaimsTable`, `StatusBadge`, `PageHeader`), use it instead of
-  building from Chakra primitives.
-- **Reuse shared components.** If a `LoadingSpinner`, `EmptyState`, `ErrorMessage`,
-  `StatusBadge`, or `PageHeader` already exists locally, use it.
+- **Prefer shadcn/ui primitives.** Use `<Button>`, `<Input>`, `<Card>`, `<Select>`,
+  `<Dialog>`, `<Badge>` from `components/ui/` for all interactive elements — do not
+  write raw HTML equivalents.
+- **Reuse layout components.** Use `<PageHeader>`, `<EmptyState>`, `<LoadingSpinner>`,
+  `<ErrorMessage>` from `components/layout/` — do not reimplement them.
 - **Reuse layout wrappers.** Place new pages inside the correct route group
-  (`(internal)/` or `(portal)/`) to inherit the existing layout and auth guard.
+  (`(internal)/` or `(auth)/`) to inherit the existing layout and auth guard.
 - **Don't extract prematurely.** If logic is genuinely specific to this feature and no
   existing pattern exists, keep it local to the feature folder.
 
-After scanning, note any Marigold components, Chakra primitives, or local components
-you will reuse, then continue.
+After scanning, note which primitives and layout components you will use, then continue.
 
 ## Step 3: Verify types package is ready
 
@@ -140,7 +124,7 @@ Read the Assets section of `docs/blueprint/flows/<feature-slug>.md`. For each as
 listed, check whether it exists:
 
 ```bash
-ls -la public/assets/<feature-slug>/ 2>/dev/null || echo "directory not found"
+ls -la public/assets/features/<feature-slug>/ 2>/dev/null || echo "directory not found"
 ```
 
 For any asset that is **missing**, fetch it from Figma:
@@ -150,7 +134,7 @@ For any asset that is **missing**, fetch it from Figma:
 3. If the result is a URL, download it:
    ```bash
    mkdir -p public/assets/<feature-slug>
-   curl -fsSL "<url>" -o "public/assets/<feature-slug>/<filename>.png"
+   curl -fsSL "<url>" -o "public/assets/features/<feature-slug>/<filename>.png"
    ```
 4. If the result is raw image data, write the file directly with the Write tool
 
@@ -204,9 +188,9 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { <Feature>Table } from '@/components/<feature>/<Feature>Table'
+import { PageHeader } from '@/components/layout/PageHeader'
 import { redirect } from 'next/navigation'
 import type { <Entity>Response } from '@repo/types'
-import { Box, Heading } from '@chakra-ui/react'
 
 export default async function <Feature>Page() {
   const session = await getServerSession(authOptions)
@@ -217,7 +201,6 @@ export default async function <Feature>Page() {
     orderBy: { createdAt: 'desc' },
   })
 
-  // Map Prisma result to @repo/types interface (dates → ISO strings)
   const itemsResponse: <Entity>Response[] = items.map((item) => ({
     ...item,
     createdAt: item.createdAt.toISOString(),
@@ -225,10 +208,10 @@ export default async function <Feature>Page() {
   }))
 
   return (
-    <Box>
-      <Heading size="lg" mb={6}>...</Heading>
+    <div className="space-y-6">
+      <PageHeader title="..." />
       <<Feature>Table items={itemsResponse} />
-    </Box>
+    </div>
   )
 }
 ```
@@ -238,9 +221,6 @@ export default async function <Feature>Page() {
 Client Components handle user interactions. They call Route Handlers via `fetch()`.
 They must be marked `'use client'` at the top.
 
-**Always check `@mentormate/marigold` first** — if it exports a table, form, or card
-that matches, import it directly instead of composing from Chakra primitives.
-
 ### Table / list component
 
 ```typescript
@@ -248,10 +228,8 @@ that matches, import it directly instead of composing from Chakra primitives.
 'use client'
 
 import { useRouter } from 'next/navigation'
-import {
-  Table, Thead, Tbody, Tr, Th, Td, TableContainer,
-  Text, Alert, AlertIcon,
-} from '@chakra-ui/react'
+import { EmptyState } from '@/components/layout/EmptyState'
+import { Badge } from '@/components/ui/badge'
 import type { <Entity>Response } from '@repo/types'
 
 interface <Feature>TableProps {
@@ -262,37 +240,36 @@ export function <Feature>Table({ items }: <Feature>TableProps) {
   const router = useRouter()
 
   if (items.length === 0) {
-    return (
-      <Text textAlign="center" py={12} color="gray.500">
-        No <entities> yet.
-      </Text>
-    )
+    return <EmptyState title="No <entities> yet." />
   }
 
   return (
-    <TableContainer>
-      <Table variant="simple">
-        <Thead>
-          <Tr>
-            <Th>ID</Th>
+    <div className="overflow-hidden rounded-lg border border-gray-200">
+      <table className="min-w-full divide-y divide-gray-200">
+        <thead className="bg-gray-50">
+          <tr>
+            <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+              ID
+            </th>
             {/* add more columns */}
-          </Tr>
-        </Thead>
-        <Tbody>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-200 bg-white">
           {items.map((item) => (
-            <Tr
+            <tr
               key={item.id}
               data-testid={`row-${item.id}`}
-              cursor="pointer"
-              _hover={{ bg: 'gray.50' }}
+              className="cursor-pointer hover:bg-gray-50"
               onClick={() => router.push(`/<feature>/${item.id}`)}
             >
-              <Td>{item.id}</Td>
-            </Tr>
+              <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
+                {item.id}
+              </td>
+            </tr>
           ))}
-        </Tbody>
-      </Table>
-    </TableContainer>
+        </tbody>
+      </table>
+    </div>
   )
 }
 ```
@@ -305,10 +282,10 @@ export function <Feature>Table({ items }: <Feature>TableProps) {
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import {
-  Box, Button, FormControl, FormLabel, FormErrorMessage,
-  Input, Alert, AlertIcon, Stack,
-} from '@chakra-ui/react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { ErrorMessage } from '@/components/layout/ErrorMessage'
 import type { Create<Entity>Request, ApiError } from '@repo/types'
 
 export function <Feature>Form() {
@@ -348,39 +325,37 @@ export function <Feature>Form() {
   }
 
   return (
-    <Box as="form" onSubmit={handleSubmit}>
-      <Stack spacing={4}>
-        {error && (
-          <Alert status="error" role="alert">
-            <AlertIcon />
-            {error}
-          </Alert>
-        )}
-        <FormControl isRequired>
-          <FormLabel htmlFor="field1">Field 1</FormLabel>
-          <Input id="field1" name="field1" type="text" />
-          <FormErrorMessage>Field 1 is required.</FormErrorMessage>
-        </FormControl>
-        <Button type="submit" colorScheme="blue" isLoading={submitting}>
-          Save
-        </Button>
-      </Stack>
-    </Box>
+    <form onSubmit={handleSubmit} className="space-y-4">
+      {error && <ErrorMessage message={error} />}
+      <div className="space-y-1">
+        <Label htmlFor="field1">Field 1</Label>
+        <Input
+          id="field1"
+          name="field1"
+          type="text"
+          required
+        />
+      </div>
+      <Button type="submit" disabled={submitting}>
+        {submitting ? 'Saving...' : 'Save'}
+      </Button>
+    </form>
   )
 }
 ```
 
 ## Step 7: Navigation registration
 
-Update any nav components to link to the new feature.
-Use Chakra's `Link` (or Next.js `Link` wrapped in a Chakra component):
+Update any nav components to link to the new feature using Next.js `<Link>`:
 
 ```typescript
-import NextLink from 'next/link'
-import { Link } from '@chakra-ui/react'
+import Link from 'next/link'
 
 // Inside nav/sidebar
-<Link as={NextLink} href="/<feature>">
+<Link
+  href="/<feature>"
+  className="text-sm font-medium text-gray-700 hover:text-gray-900"
+>
   Feature Name
 </Link>
 ```
@@ -397,19 +372,13 @@ For each vertical slice in the plan, follow this strict RED→GREEN loop:
 Write the test for the current slice in `__tests__/components/<feature>/` (or the
 appropriate test file). Write only this one test — do not write multiple tests at once.
 
-When mocking Chakra UI in tests, use the real library — do not mock `@chakra-ui/react`.
-Wrap each test render in `ChakraProvider` with the Marigold theme:
+Component tests use `@testing-library/react` directly — shadcn/ui has no provider, so no wrapper is needed:
 
 ```typescript
-import { ChakraProvider } from '@chakra-ui/react'
-import { theme } from '@mentormate/marigold'
-
-function renderWithTheme(ui: React.ReactElement) {
-  return render(<ChakraProvider theme={theme}>{ui}</ChakraProvider>)
-}
+import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { <Feature>Table } from '@/components/<feature>/<Feature>Table'
 ```
-
-Add this helper to a `__tests__/test-utils.tsx` file so it is shared across all feature tests.
 
 ### Run (expect RED)
 
@@ -478,9 +447,7 @@ Frontend implementation complete.
 Pages: app/(internal)/<feature>/
 Components: components/<feature>/
 
-Design system:
-  Marigold components used: <list or "none">
-  Chakra primitives used: <list>
+Styling: Tailwind CSS
 
 Test results:
   Component tests: X passing

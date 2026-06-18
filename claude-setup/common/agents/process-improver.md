@@ -18,7 +18,7 @@ You are the meta-agent responsible for improving the development pipeline based 
 ### 1a — Structured feedback logs
 
 ```bash
-ls orchestrator_logslogs/feedback/ 2>/dev/null || echo "No feedback directory yet"
+ls orchestrator_logs/logs/feedback/ 2>/dev/null || echo "No feedback directory yet"
 find orchestrator_logs/logs/feedback -name "*.json" | sort
 ```
 
