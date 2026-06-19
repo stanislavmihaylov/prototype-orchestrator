@@ -3,8 +3,9 @@ name: design-discovery
 description: >
   Runs once per project (not per feature). Connects to Figma via MCP to extract
   screen inventory, navigation map, design tokens, and entity hints for a
-  React Native (Expo) application. Produces docs/blueprint/index.md and
-  docs/blueprint/data-model.md skeleton.
+  React Native (Expo) application. Produces docs/blueprint/index.md,
+  docs/blueprint/data-model.md skeleton, docs/blueprint/tasks.md (ordered
+  feature backlog), and one docs/blueprint/flows/<feature-slug>.md per feature.
   Triggers: manually at project start, or when the Figma file changes significantly.
   Requires: Figma MCP server configured and available.
 model: sonnet
@@ -65,8 +66,15 @@ Group screens by feature. For each feature:
 - List of Figma node IDs that belong to it
 - Navigator context (Auth Stack / Main Tab / Modal Stack)
 - Brief description
+- Dependencies on other features (or "nothing")
 
 ## Output files to create
+
+Ensure the output directory exists before writing:
+
+```bash
+mkdir -p docs/blueprint/flows
+```
 
 ### `docs/blueprint/index.md`
 
@@ -74,7 +82,7 @@ Group screens by feature. For each feature:
 # Design Blueprint Index
 
 **Figma File:** <file name>
-**Last Modified:** <date>
+**Figma File Key:** <file-key>
 **Extracted:** <today's date>
 **Stack:** React Native (Expo) + NestJS + Passport-JWT
 
@@ -128,10 +136,6 @@ Use this table when running `design-analyst-flow` for each feature.
 | `mood-tracking` | <id4>, <id5> | Main Tab | Mood log and history chart |
 | ... | ... | ... | ... |
 
-## Figma File Key
-
-**Figma File Key:** <file-key>
-
 ## Next Steps
 
 Run `design-analyst-flow` for each feature listed above, passing the feature slug and its node IDs.
@@ -182,20 +186,109 @@ Managed by the auth system (`nestjs-auth-patterns` skill). Self-contained email/
 - All data queries are scoped to `user.id` — never expose cross-user data
 ```
 
-Ensure `docs/blueprint/flows/` directory exists before writing:
+### `docs/blueprint/tasks.md`
 
-```bash
-mkdir -p docs/blueprint/flows
+```markdown
+# Feature Task List
+
+> Managed by the pipeline orchestrator. Mark [x] when a feature is merged.
+> Order reflects implementation dependency — later features may depend on earlier ones.
+> Derived from: <Figma file name>.
+
+## Backlog
+
+- [ ] `feature-a` — <one-line description> (depends on: nothing)
+- [ ] `feature-b` — <one-line description> (depends on: feature-a)
+...
+
+## In Progress
+
+_none_
+
+## Completed
+
+_none_
 ```
 
-After writing both files, output a summary:
+Do NOT add per-feature task breakdowns (Backend / Frontend / Assets sections). Those are written by `plan-feature` when each feature is planned. Only write the backlog list.
+
+### `docs/blueprint/flows/<feature-slug>.md` — one file per feature
+
+For each feature in the inventory, create a flow spec file. Derive as much as possible from the screen names and structure visible in the Figma metadata.
+
+```markdown
+# Feature Flow: <Feature Name>
+
+**Figma Node IDs:** <comma-separated node IDs>
+**Feature Slug:** `<feature-slug>`
+**Navigator:** <Auth Stack / Main Tab / Modal Stack>
+**Last Updated:** <today's date YYYY-MM-DD>
+
+---
+
+## Overview
+
+<2–3 sentences. What does this feature do? What user problem does it solve?>
+
+---
+
+## Screens
+
+List every screen this feature includes.
+
+### <ScreenName>
+
+**Node ID:** `<id>`
+**Navigator:** <which navigator/stack>
+**Entry point:** <what triggers navigation to this screen>
+**Exit points:** <where the user goes next>
+
+**Content & layout (inferred):**
+- <Describe what should appear based on the screen name and metadata.>
+
+**Key interactions:**
+- <User action> → <System response / navigation>
+
+**Data displayed:**
+- <Field or entity data shown on this screen>
+
+**Data submitted:**
+- <Fields the user fills in / actions that write data>
+
+---
+
+## Business Rules
+
+- <Rule 1>
+- <Rule 2>
+# TODO: confirm with client: <any ambiguous rule>
+
+---
+
+## Acceptance Criteria
+
+- [ ] <Measurable criterion 1>
+- [ ] <Measurable criterion 2>
+# TODO: confirm acceptance criteria before planning
+
+---
+
+## Open Questions
+
+1. <Question 1>
+2. <Question 2>
+```
+
+After writing all files, output a summary:
 
 ```
 Design discovery complete.
 
 Files written:
-- docs/blueprint/index.md  (X screens, Y features, Z tokens)
-- docs/blueprint/data-model.md  (X entities inferred)
+- docs/blueprint/index.md      (X screens, Y features, Z tokens)
+- docs/blueprint/data-model.md (X entities inferred)
+- docs/blueprint/tasks.md      (X features in backlog)
+- docs/blueprint/flows/        (X flow spec files)
 
 Next step: Run design-analyst-flow for each feature in the index.
 Feature order (suggested by complexity): [list features]

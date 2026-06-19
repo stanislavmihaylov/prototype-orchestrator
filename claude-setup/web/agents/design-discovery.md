@@ -3,8 +3,9 @@ name: design-discovery
 description: >
   Runs once per project (not per feature). Connects to Figma via MCP to extract
   page inventory, navigation structure, design tokens, and entity hints for a
-  Next.js web application. Produces docs/blueprint/index.md and
-  docs/blueprint/data-model.md skeleton.
+  Next.js web application. Produces docs/blueprint/index.md,
+  docs/blueprint/data-model.md skeleton, docs/blueprint/tasks.md (ordered
+  feature backlog), and one docs/blueprint/flows/<feature-slug>.md per feature.
   Triggers: manually at project start, or when the Figma file changes significantly.
   Requires: Figma MCP server configured and available.
 model: sonnet
@@ -65,8 +66,15 @@ Group frames by feature. For each feature:
 - List of Figma node IDs that belong to it
 - Inferred route(s) in the Next.js App Router (e.g., `/orders`, `/orders/[id]`)
 - Brief description
+- Dependencies on other features (or "nothing")
 
 ## Output files to create
+
+Ensure the output directory exists before writing:
+
+```bash
+mkdir -p docs/blueprint/flows
+```
 
 ### `docs/blueprint/index.md`
 
@@ -74,7 +82,7 @@ Group frames by feature. For each feature:
 # Design Blueprint Index
 
 **Figma File:** <file name>
-**Last Modified:** <date>
+**Figma File Key:** <file-key>
 **Extracted:** <today's date>
 **Stack:** Next.js App Router + Prisma + NextAuth
 
@@ -174,20 +182,109 @@ Standard NextAuth user — managed by NextAuth adapter. Extended with app-specif
 - All data is scoped to the authenticated user — no global queries without auth check
 ```
 
-Ensure `docs/blueprint/flows/` directory exists before writing:
+### `docs/blueprint/tasks.md`
 
-```bash
-mkdir -p docs/blueprint/flows
+```markdown
+# Feature Task List
+
+> Managed by the pipeline orchestrator. Mark [x] when a feature is merged.
+> Order reflects implementation dependency — later features may depend on earlier ones.
+> Derived from: <Figma file name>.
+
+## Backlog
+
+- [ ] `feature-a` — <one-line description> (depends on: nothing)
+- [ ] `feature-b` — <one-line description> (depends on: feature-a)
+...
+
+## In Progress
+
+_none_
+
+## Completed
+
+_none_
 ```
 
-After writing both files, output a summary:
+Do NOT add per-feature task breakdowns (Backend / Frontend / Assets sections). Those are written by `plan-feature` when each feature is planned. Only write the backlog list.
+
+### `docs/blueprint/flows/<feature-slug>.md` — one file per feature
+
+For each feature in the inventory, create a flow spec file. Derive as much as possible from the frame names and structure visible in the Figma metadata.
+
+```markdown
+# Feature Flow: <Feature Name>
+
+**Figma Node IDs:** <comma-separated node IDs>
+**Feature Slug:** `<feature-slug>`
+**Routes:** <comma-separated Next.js routes>
+**Last Updated:** <today's date YYYY-MM-DD>
+
+---
+
+## Overview
+
+<2–3 sentences. What does this feature do? What user problem does it solve?>
+
+---
+
+## Pages
+
+List every page this feature requires.
+
+### <PageName>
+
+**Route:** `/path/to/page`
+**Node ID:** `<id>`
+**Entry point:** <what triggers navigation to this page>
+**Exit points:** <where the user goes next>
+
+**Content & layout (inferred):**
+- <Describe what should appear based on the frame name and metadata.>
+
+**Key interactions:**
+- <User action> → <System response / navigation>
+
+**Data displayed:**
+- <Field or entity data shown on this page>
+
+**Data submitted:**
+- <Fields the user fills in / actions that write data>
+
+---
+
+## Business Rules
+
+- <Rule 1>
+- <Rule 2>
+# TODO: confirm with client: <any ambiguous rule>
+
+---
+
+## Acceptance Criteria
+
+- [ ] <Measurable criterion 1>
+- [ ] <Measurable criterion 2>
+# TODO: confirm acceptance criteria before planning
+
+---
+
+## Open Questions
+
+1. <Question 1>
+2. <Question 2>
+```
+
+After writing all files, output a summary:
 
 ```
 Design discovery complete.
 
 Files written:
-- docs/blueprint/index.md  (X pages, Y features, Z tokens)
-- docs/blueprint/data-model.md  (X entities inferred)
+- docs/blueprint/index.md      (X pages, Y features, Z tokens)
+- docs/blueprint/data-model.md (X entities inferred)
+- docs/blueprint/tasks.md      (X features in backlog)
+- docs/blueprint/flows/        (X flow spec files)
 
 Next step: Run plan-feature for each feature in the index.
 Feature order (suggested by dependency): [list features]

@@ -48,6 +48,14 @@ Find the entry whose name matches `flow_name` (case-insensitive). Extract its Fi
 
 Derive `feature_slug` from `flow_name`: lowercase, spaces replaced with hyphens (e.g. `"User Dashboard"` → `"user-dashboard"`).
 
+Next, read the skeleton flow spec created by `design-discovery`:
+
+```
+Read: docs/blueprint/flows/<feature-slug>.md
+```
+
+This file contains inferred page names, node IDs, rough interactions, business rules, acceptance criteria, and open questions — all marked `# TODO: confirm`. Your job is to enrich this skeleton with real Figma data: replace every `# TODO: confirm` line where Figma answers it, fill in missing layout/component/interaction detail, and resolve open questions where possible. Do NOT discard sections that are already complete — carry them forward.
+
 ## Step 1: Load design context for the feature nodes
 
 Call `get_design_context` passing the feature's node IDs. If the call fails for any reason, apply the absolute rule above immediately — output `FIGMA_MCP_FAILED:` and stop.
@@ -212,7 +220,7 @@ For data fetching:
 
 ## Output file
 
-Create: `docs/blueprint/flows/<feature-slug>.md`
+Update (overwrite) `docs/blueprint/flows/<feature-slug>.md` with the fully enriched spec. Start from the skeleton you read in the Inputs step — carry forward its structure, and replace inferred/TODO content with real Figma data. The enriched file must include everything the skeleton had, plus the full detail below.
 
 ```markdown
 # Feature Flow: <Feature Name>
@@ -329,9 +337,9 @@ List every static media asset exported for this feature. If none, write "No stat
 
 ## Step 4: Write tasks to docs/blueprint/tasks.md
 
-After the flow spec is complete, generate the feature task list and append it to `docs/blueprint/tasks.md`. Create the file if it does not exist.
+`docs/blueprint/tasks.md` was created by `design-discovery` with a top-level backlog list of feature slugs. Your job is to append the detailed per-feature task breakdown (Backend / Frontend / Assets) beneath that list. Do NOT modify the backlog list entries — only append.
 
-Before appending, check whether a section for this feature already exists to avoid duplicates:
+Before appending, check whether a detailed section for this feature already exists to avoid duplicates:
 ```bash
 grep -q "## Feature: <Flow Name>" docs/blueprint/tasks.md 2>/dev/null && echo "ALREADY_EXISTS" || echo "NOT_FOUND"
 ```
