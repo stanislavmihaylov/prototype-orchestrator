@@ -318,6 +318,8 @@ pnpm add \
   passport-jwt \
   passport-local \
   @prisma/client \
+  @prisma/adapter-pg \
+  pg \
   prisma \
   bcryptjs \
   class-validator \
@@ -328,6 +330,7 @@ pnpm add -D \
   @types/passport-jwt \
   @types/passport-local \
   @types/bcryptjs \
+  @types/pg \
   @nestjs/testing \
   jest \
   ts-jest \
@@ -438,9 +441,15 @@ Write `apps/backend/src/prisma/prisma.service.ts`:
 ```typescript
 import { Injectable, OnModuleInit } from '@nestjs/common'
 import { PrismaClient } from '@prisma/client'
+import { PrismaPg } from '@prisma/adapter-pg'
 
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit {
+  constructor() {
+    const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL })
+    super({ adapter })
+  }
+
   async onModuleInit() {
     await this.$connect()
   }
