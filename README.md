@@ -12,6 +12,7 @@ Designed to be added to any project as a **git submodule**.
 - [Adding to a New Project](#adding-to-a-new-project)
 - [Main Project Configuration](#main-project-configuration)
 - [First-Time Setup](#first-time-setup)
+- [Figma MCP Setup](#figma-mcp-setup)
 - [Configuration](#configuration)
 - [Usage](#usage)
 - [Pipeline Flow](#pipeline-flow)
@@ -163,6 +164,42 @@ git clone --recurse-submodules <repo-url>
 make orchestrator-setup STACK=web   # or STACK=mobile
 cp prototype-orchestrator/.env.example prototype-orchestrator/.env
 ```
+
+---
+
+## Figma MCP Setup
+
+The design agents (`design-discovery`, `design-analyst-flow`, `feature-implementation-frontend`) require a connected Figma MCP server. The pipeline uses the **Framelink Figma MCP server** (`figma-developer-mcp`) authenticated via a personal access token.
+
+### 1. Generate a Figma personal access token
+
+Go to **Figma → Settings → Security → Personal access tokens** and create a token with at least read access to your files.
+
+### 2. Create `.mcp.json` in your project root
+
+```json
+{
+  "mcpServers": {
+    "figma": {
+      "command": "npx",
+      "args": ["-y", "figma-developer-mcp@latest", "--stdio"],
+      "env": {
+        "FIGMA_API_KEY": "figd_your_token_here"
+      }
+    }
+  }
+}
+```
+
+Add `.mcp.json` to your `.gitignore` to keep the token out of version control.
+
+Restart Claude Code — it will pick up the new server automatically.
+
+### Verifying the connection
+
+Run `claude mcp list` — you should see `figma` listed as a connected server. The agents use `mcp__figma__get_figma_data` and `mcp__figma__download_figma_images`.
+
+> **Why `figma-developer-mcp` and not the official OAuth plugin?** The pipeline spawns agents via `spawnSync("claude", [..., "--print"])` — completely fresh processes with no session context. OAuth-based connectors and Claude plugins (`mcp__plugin_figma_figma__*`) only work in interactive sessions. `figma-developer-mcp` is a PAT-based stdio server that starts fresh with each subprocess and is available to all pipeline agents.
 
 ---
 

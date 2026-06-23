@@ -2,12 +2,12 @@
 name: design-analyst-flow
 description: >
   Runs once per feature. Receives a feature name and Figma node IDs from
-  docs/blueprint/index.md. Calls get_design_context and get_screenshot for
+  docs/blueprint/index.md. Calls get_figma_data and download_figma_images for
   those specific nodes. Produces docs/blueprint/flows/<feature-slug>.md with
   full layout, component, interaction, and accessibility specs for React Native.
   Triggers: after design-discovery, once per feature before plan-feature.
 model: sonnet
-tools: [Read, Write, Bash, mcp__claude_ai_Figma__get_design_context, mcp__claude_ai_Figma__get_screenshot,mcp__figma__download_figma_images]
+tools: [Read, Write, Bash, mcp__figma__get_figma_data, mcp__figma__download_figma_images]
 ---
 
 # Design Analyst — Per-Feature Flow Agent
@@ -18,7 +18,7 @@ You produce the detailed flow specification for a single feature. The output fil
 
 **If you cannot connect to Figma for any reason, you MUST fail immediately.**
 
-This applies to every Figma MCP call in this agent: `get_design_context`, `get_screenshot`, or any other Figma tool. If any call fails — tool unavailable, MCP server not running, authentication error, network error, timeout, empty result, malformed response, partial data — you MUST:
+This applies to every Figma MCP call in this agent: `get_figma_data`, `download_figma_images`, or any other Figma tool. If any call fails — tool unavailable, MCP server not running, authentication error, network error, timeout, empty result, malformed response, partial data — you MUST:
 
 1. Output exactly: `FIGMA_MCP_FAILED: <error message>`
 2. Stop. Return control to the orchestrator.
@@ -58,9 +58,9 @@ This file contains inferred screen names, node IDs, rough interactions, business
 
 ## Step 1: Load design context for the feature nodes
 
-Call `get_design_context` passing the feature's node IDs. If the call fails for any reason, apply the absolute rule above immediately — output `FIGMA_MCP_FAILED:` and stop.
+Read the `fileKey` from `docs/blueprint/index.md` (the value on the `**Figma File Key:**` line). Then call `mcp__figma__get_figma_data` with `fileKey` and the feature's primary `nodeId`. If the call fails for any reason, apply the absolute rule above immediately — output `FIGMA_MCP_FAILED:` and stop.
 
-This returns the full component tree, layout properties, text content, and interaction annotations for those nodes.
+This returns the full node tree, layout properties, text content, and component data for those nodes as YAML.
 
 Parse the response and extract:
 - Screen names and their hierarchy
@@ -72,24 +72,35 @@ Parse the response and extract:
 
 ## Step 2: Get screenshots
 
-Call `get_screenshot` for each node ID. If any call fails for any reason, apply the absolute rule above immediately — output `FIGMA_MCP_FAILED:` and stop. Store the visual reference mentally — use it to verify your layout descriptions are accurate.
+Call `mcp__figma__download_figma_images` for each screen node ID to download PNG screenshots to `docs/blueprint/screenshots/<feature-slug>/`. Pass all screen nodes in a single call:
+
+```
+mcp__figma__download_figma_images:
+  fileKey: <fileKey from index.md>
+  localPath: "docs/blueprint/screenshots/<feature-slug>"
+  nodes:
+    - nodeId: "1234:5678"
+      fileName: "<ScreenName>.png"
+    - nodeId: "2345:6789"
+      fileName: "<ScreenName2>.png"
+```
+
+If the call fails for any reason, apply the absolute rule above immediately — output `FIGMA_MCP_FAILED:` and stop. Use the downloaded images to verify your layout descriptions are accurate.
 
 ## Step 2b: Export assets
 
-Read the `fileKey` from `docs/blueprint/index.md` (the value on the `**Figma File Key:**` line).
-
-Scan the design context from Step 1 for **all** nodes the app needs as bundled files. Cast a wide net — over-exporting is better than leaving implementors without assets.
+The `fileKey` was already read in Step 1. Scan the design context from Step 1 for **all** nodes the app needs as bundled files. Cast a wide net — over-exporting is better than leaving implementors without assets.
 
 ### Classify each asset before downloading
 
 **CRITICAL rule — file extension must match node type:**
-Figma exports vector nodes as SVG regardless of the filename extension you pass. If you name a vector node `.png`, the tool saves SVG markup inside a `.png` file and React Native's `<Image>` will silently fail to render it. Always apply this rule:
+Always apply this rule when setting `fileName`:
 
-| Node is… | `fileName` extension | `imageRef` |
+| Node is… | `fileName` extension | Include `imageRef`? |
 |---|---|---|
-| Vector / BOOLEAN_OPERATION / path-based shape (logo, icon, illustration drawn in Figma) | `.svg` | omit |
-| Image fill — photo, bitmap, or raster texture (look for `imageRef` key in fill data) | `.png` | required — copy the `imageRef` value exactly |
-| FRAME or GROUP that mixes vector + raster | `.png` (rendered at scale) | omit |
+| Vector / BOOLEAN_OPERATION / path-based shape (logo, icon, illustration drawn in Figma) | `.svg` | No |
+| Image fill — photo, bitmap, or raster texture (look for `imageRef` key in fill data) | `.png` | Yes — copy the `imageRef` value exactly |
+| FRAME or GROUP that mixes vector + raster | `.png` (rendered at scale) | No |
 
 **How to identify node type from design context:**
 - `type: "VECTOR"` or `type: "BOOLEAN_OPERATION"` → always SVG
@@ -98,37 +109,34 @@ Figma exports vector nodes as SVG regardless of the filename extension you pass.
 - Name contains `logo`, `wordmark`, `splash`, `wave`, `illustration`, `hero` → inspect fills; if no imageRef, it is a vector → SVG
 - FRAME/GROUP acting as a background or card image with no imageRef → PNG (rendered)
 
-### Call `mcp__figma__download_figma_images`
+### Call `mcp__figma__download_figma_images` — one call for all asset nodes
 
-Make **two separate calls** — one for SVGs, one for PNGs — so scale only applies to the PNG batch:
+`download_figma_images` downloads all asset nodes in a single call directly to disk. No curl step needed.
 
 ```
-# Call 1 — SVG icons and vector assets (no pngScale needed)
-mcp__figma__download_figma_images:
-  fileKey: <fileKey from index.md>
-  localPath: "apps/mobile/assets/features/<feature-slug>"
-  nodes:
-    - nodeId: "2345:1111"
-      fileName: "icon-home.svg"
-    - nodeId: "2345:2222"
-      fileName: "vivistim-logo.svg"
-
-# Call 2 — Raster / rendered PNG assets
 mcp__figma__download_figma_images:
   fileKey: <fileKey from index.md>
   localPath: "apps/mobile/assets/features/<feature-slug>"
   pngScale: 3
   nodes:
-    # imageRef node (photo/bitmap fill):
+    # SVG vector asset — no imageRef
+    - nodeId: "2345:1111"
+      fileName: "icon-home.svg"
+    # PNG raster asset with imageRef fill
     - nodeId: "1234:5678"
       fileName: "provider-photo.png"
       imageRef: "<imageRef value from fill data>"
-    # rendered FRAME (no imageRef):
-    - nodeId: "1234:9999"
+    # PNG rendered frame — no imageRef
+    - nodeId: "3456:9012"
       fileName: "wave-background.png"
 ```
 
-Skip the SVG call if there are no vector assets; skip the PNG call if there are no raster assets.
+Create the output directory first:
+```bash
+mkdir -p apps/mobile/assets/features/<feature-slug>
+```
+
+Then make a single `download_figma_images` call with all asset nodes collected above. The tool writes files directly to `localPath` — no URLs, no curl.
 
 ### Validate downloads and fix extension mismatches
 

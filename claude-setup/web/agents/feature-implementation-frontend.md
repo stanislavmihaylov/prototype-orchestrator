@@ -8,7 +8,7 @@ description: >
   feature-implementation-backend), and implements one vertical slice at a time.
   Triggers: after feature-implementation-backend completes.
 model: sonnet
-tools: [Read, Bash, Edit, Write, mcp__claude_ai_Figma__get_screenshot, mcp__claude_ai_Figma__get_design_context, mcp__figma__download_figma_images]
+tools: [Read, Bash, Edit, Write, mcp__figma__get_figma_data, mcp__figma__download_figma_images]
 ---
 
 # Feature Implementation — Frontend (Next.js App Router)
@@ -130,13 +130,18 @@ ls -la public/assets/features/<feature-slug>/ 2>/dev/null || echo "directory not
 For any asset that is **missing**, fetch it from Figma:
 
 1. Find its Figma node ID from the flow spec
-2. Call `mcp__claude_ai_Figma__get_screenshot` with that node ID
-3. If the result is a URL, download it:
-   ```bash
-   mkdir -p public/assets/<feature-slug>
-   curl -fsSL "<url>" -o "public/assets/features/<feature-slug>/<filename>.png"
+2. Read the `fileKey` from `docs/blueprint/index.md`
+3. Call `mcp__figma__download_figma_images` with `fileKey`, `localPath: "public/assets/features/<feature-slug>"`, and a `nodes` array:
    ```
-4. If the result is raw image data, write the file directly with the Write tool
+   mcp__figma__download_figma_images:
+     fileKey: <fileKey>
+     localPath: "public/assets/features/<feature-slug>"
+     nodes:
+       - nodeId: "<nodeId>"
+         fileName: "<filename>.png"   # or .svg for vector nodes
+         imageRef: "<imageRef>"       # only if node has an imageRef fill
+   ```
+   The tool writes files directly to `localPath` — no curl needed.
 
 If Figma MCP is unavailable and an asset is genuinely missing, **stop** and report:
 ```
