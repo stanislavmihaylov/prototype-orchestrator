@@ -625,6 +625,22 @@ async function resumeAbortedPipeline(threadId) {
   } catch(e) { alert('Resume failed: ' + e.message) }
 }
 
+async function stopPipeline(threadId) {
+  if (!confirm('Stop this pipeline run and kill all running processes?')) return
+  try {
+    const r = await fetch(`/api/pipeline/stop/${threadId}`, { method: 'POST' })
+    const d = await r.json()
+    if (d.ok) {
+      const run = runs.find(r => r.threadId === threadId)
+      if (run) { run.state.status = 'aborted'; run.state.errorMessage = 'Stopped by user' }
+      lastDetailData[threadId] = null
+      renderSidebar()
+      const res2 = await fetch('/api/runs/' + threadId)
+      if (res2.ok) renderDetail(await res2.json())
+    } else alert('Stop failed: ' + (d.error ?? 'unknown error'))
+  } catch(e) { alert('Stop failed: ' + e.message) }
+}
+
 function rerunPlan(threadId) {
   // Clear bad plan content before optimistic update so it doesn't flash
   const run = runs.find(r => r.threadId === threadId)
@@ -1019,6 +1035,7 @@ function renderDetail(run) {
       <div class="detail-title">
         ${escHtml(slug)} ${statusBadge(state.status??'unknown')}
         ${live?'<span class="live-badge">● LIVE</span>':''}
+        ${(live || isWaiting(run))?`<button class="btn btn-danger" style="margin-left:auto;font-size:12px;padding:4px 12px" onclick="stopPipeline('${run.threadId}')">⏹ Stop</button>`:''}
       </div>
       <div class="detail-meta">
         <span>Thread: ${run.threadId}</span>

@@ -190,6 +190,50 @@ createServer((req: IncomingMessage, res: ServerResponse) => {
     return;
   }
 
+  // Stop a running pipeline — kills the process group then marks the run aborted
+  if (req.method === "POST" && req.url?.startsWith("/api/pipeline/stop/")) {
+    const threadId = req.url.slice("/api/pipeline/stop/".length);
+    const runFilePath = join(RUNS_DIR, `${threadId}.json`);
+    if (!existsSync(runFilePath)) {
+      res.writeHead(404);
+      res.end("Not found");
+      return;
+    }
+    try {
+      const runData = JSON.parse(readFileSync(runFilePath, "utf-8"));
+      const pid: number = runData.pid ?? 0;
+      if (pid > 0) {
+        try {
+          process.kill(-pid, "SIGTERM");
+        } catch { /* already dead */ }
+        // Escalate to SIGKILL after 2 s if the process group is still alive
+        setTimeout(() => {
+          try { process.kill(-pid, "SIGKILL"); } catch { /* already dead */ }
+        }, 2000);
+      }
+      // Mark any stuck running nodes as stopped
+      for (const node of runData.nodes ?? []) {
+        if (node.status === "running") {
+          node.status = "failed";
+          node.error = "Stopped by user";
+          if (node.startedAt)
+            node.durationMs = Date.now() - new Date(node.startedAt).getTime();
+        }
+      }
+      runData.state.status = "aborted";
+      runData.state.errorMessage = "Stopped by user";
+      runData.pid = null;
+      runData.updatedAt = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+      writeFileSync(runFilePath, JSON.stringify(runData, null, 2));
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true }));
+    } catch (e: any) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
   // Resume a held (aborted) pipeline
   if (req.method === "POST" && req.url?.startsWith("/api/pipeline/resume/")) {
     const threadId = req.url.slice("/api/pipeline/resume/".length);
