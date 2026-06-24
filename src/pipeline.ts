@@ -595,7 +595,7 @@ async function stepTests(
   );
   const scopeArg =
     scope === "backend" ? "backend" : scope === "mobile" ? "mobile" : "full";
-  const r = runAgent(
+  const r = await runAgentWithRetry(
     "test-runner",
     `Scope: ${scopeArg}. Run all tests for feature: ${featureSlug}`,
   );
