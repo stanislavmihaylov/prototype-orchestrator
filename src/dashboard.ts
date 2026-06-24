@@ -190,6 +190,27 @@ createServer((req: IncomingMessage, res: ServerResponse) => {
     return;
   }
 
+  // Resume a held (aborted) pipeline
+  if (req.method === "POST" && req.url?.startsWith("/api/pipeline/resume/")) {
+    const threadId = req.url.slice("/api/pipeline/resume/".length);
+    const path = join(RUNS_DIR, `${threadId}.json`);
+    if (!existsSync(path)) {
+      res.writeHead(404);
+      res.end("Not found");
+      return;
+    }
+    const child = spawn("node", [TSX, PIPELINE_SCRIPT, "resume", threadId], {
+      cwd: PROJECT_ROOT,
+      detached: true,
+      stdio: "ignore",
+      env: { ...process.env },
+    });
+    child.unref();
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ ok: true }));
+    return;
+  }
+
   // Rerun failed step
   if (req.method === "POST" && req.url?.startsWith("/api/pipeline/rerun/")) {
     const threadId = req.url.slice("/api/pipeline/rerun/".length);

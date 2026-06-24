@@ -1208,11 +1208,39 @@ async function resumePipeline(threadId: string): Promise<void> {
       console.log(`Pipeline ${threadId} is already complete.`);
       return;
 
-    case "aborted":
+    case "aborted": {
       console.log(
-        `Pipeline ${threadId} was held/aborted. Last state: ${state.featureSlug}`,
+        `\n[pipeline] Resuming held pipeline for "${state.featureSlug}" — presenting Interrupt #2 again.`,
       );
+      const { decision, feedback } = await interrupt2(
+        threadId,
+        state.featureDescription,
+        true,
+        state.reviewSeverity ?? "clean",
+        state.iteration ?? 0,
+      );
+      if (decision === "merge") {
+        ch("state", threadId, "status", "running");
+        await stepPrManager(
+          threadId,
+          state.featureSlug,
+          state.featureDescription,
+        );
+      } else if (decision === "fix") {
+        ch("state", threadId, "status", "running");
+        await continueFromImplementation(
+          threadId,
+          loadRun(threadId).state,
+          feedback,
+        );
+      } else {
+        ch("state", threadId, "status", "aborted");
+        console.log(
+          `Pipeline held. Resume with:\n  ./pipeline resume ${threadId}`,
+        );
+      }
       return;
+    }
 
     case "failed": {
       const failedNode = [...run.nodes]
@@ -1495,6 +1523,48 @@ async function rerunStep(threadId: string): Promise<void> {
             "errorMessage",
             "Env check passed — run ./pipeline resume to continue with design/plan",
           );
+        }
+        break;
+      }
+
+      case "design_analyst_flow": {
+        const design = await stepDesignAnalystFlow(threadId, state.flowName);
+        const slug = design.featureSlug || state.featureSlug;
+        const desc = design.featureDescription || state.featureDescription;
+        ch("state", threadId, "featureSlug", slug);
+        ch("state", threadId, "featureDescription", desc);
+        const qAnswers: Record<string, string> =
+          typeof state.questionAnswers === "string"
+            ? JSON.parse(state.questionAnswers || "{}")
+            : (state.questionAnswers ?? {});
+        const planResult = await stepPlanFeature(
+          threadId,
+          slug,
+          desc,
+          state.planFeedback ?? "",
+          qAnswers,
+        );
+        const plan = planResult.plan;
+        const scope =
+          state.scope && state.scope !== "auto"
+            ? state.scope
+            : planResult.scope;
+        ch("state", threadId, "scope", scope);
+        const response = await interrupt1(threadId, desc, plan, qAnswers);
+        if (response.toLowerCase() === "approved") {
+          ch("state", threadId, "status", "running");
+          await continueFromImplementation(threadId, loadRun(threadId).state);
+        } else {
+          ch("state", threadId, "planFeedback", response);
+          ch(
+            "feedback",
+            threadId,
+            "plan_rejection",
+            slug,
+            "plan-feature",
+            `Plan rejected. Feedback: ${response}`,
+          );
+          console.log("Plan feedback saved. Rerun to re-plan.");
         }
         break;
       }
