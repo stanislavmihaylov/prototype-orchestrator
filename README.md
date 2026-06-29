@@ -253,33 +253,134 @@ The thread ID is printed to the terminal on start and is visible in the dashboar
 
 ## Pipeline Flow
 
-```
-environment-checker           Verify Postgres, Node ≥ 20, pnpm, env vars, git clean
-      ↓
-design-analyst-flow           Figma → docs/blueprint/flows/<slug>.md
-  (skipped when HAS_DESIGN=false)
-      ↓
-plan-feature                  Full-stack plan + shared types contract
+```mermaid
+flowchart TD
+    %% ── Project bootstrap (run once) ──────────────────────────────────────────
 
-━━━ INTERRUPT #1 — review plan ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Reply "approved" to continue, or describe what needs to change.
+    START([🚀 New project]) --> STACK{Stack?}
 
-      ↓
-feature-implementation-backend    Route Handlers → Prisma → types sync (TDD)
-      ↓
-feature-implementation-frontend   Pages + components (TDD)
-      ↓
-test-runner                   Jest → TypeScript → lint → build
-      ↓
-reviewer                      Code quality + OWASP security review
-      ↓
-auto-fix loop                 One automatic re-implementation pass on critical/high findings
+    STACK -->|mobile| SETUP_M["orchestrator-setup STACK=mobile
+    Installs mobile agent set
+    design-discovery · project-setup
+    feature-implementation-frontend (mobile)
+    reviewer · test-runner · doc-writer"]
 
-━━━ INTERRUPT #2 — approve merge ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Reply "merge", "hold", or "fix: <feedback>".
+    STACK -->|web| SETUP_W["orchestrator-setup STACK=web
+    Installs web agent set
+    design-discovery · project-setup
+    feature-implementation-frontend (web)
+    reviewer · test-runner · doc-writer"]
 
-      ↓
-pr-manager                    git push → gh pr create → marks tasks.md [x]
+    SETUP_M --> SRC
+    SETUP_W --> SRC
+
+    SRC{Source of truth?}
+
+    SRC -->|Figma file| DD["design-discovery
+    Connects to Figma MCP
+    → index.md · data-model.md
+    · flows/ per feature"]
+
+    SRC -->|Proposal / PDF| PD["proposal-discovery
+    Reads proposal document
+    → index.md · data-model.md
+    · flows/ per feature"]
+
+    DD --> PS
+    PD --> PS
+
+    PS["project-setup
+    Scaffold repo · install deps
+    infrastructure · design tokens
+    state management · build scripts"]
+
+    PS --> FEAT([🔁 Run pipeline-start for each feature])
+
+    %% ── Per-feature pipeline ───────────────────────────────────────────────────
+
+    FEAT --> ENV
+
+    ENV["environment-checker
+    Dependencies · env vars
+    database · git clean"]
+    ENV -->|fail| FAIL_ENV([💥 Failed])
+    ENV -->|pass| HAS_DESIGN
+
+    HAS_DESIGN{HAS_DESIGN?}
+    HAS_DESIGN -->|true| DAF["design-analyst-flow
+    Figma → flows/slug.md
+    layout · components · a11y"]
+    HAS_DESIGN -->|false or NO_FIGMA_DESIGN| PLAN
+    DAF -->|fail| FAIL_DAF([💥 Failed])
+    DAF -->|pass| PLAN
+
+    PLAN["plan-feature
+    Full-stack implementation plan
+    backend + frontend + shared types"]
+    PLAN --> OQ{Open questions?}
+    OQ -->|yes| HQ[/"⏸ Human answers questions"/]
+    HQ --> PLAN
+    OQ -->|no| INT1
+
+    INT1[/"⏸ INTERRUPT 1 — Review plan
+    'approved' or describe changes"/]
+    INT1 -->|approved| BACK
+    INT1 -->|feedback| PLAN
+
+    BACK["feature-implementation-backend
+    API · database · types sync · TDD"]
+    BACK --> FRONT["feature-implementation-frontend
+    Screens · state · components · TDD
+    (mobile or web — set by stack)"]
+    FRONT --> TEST
+
+    TEST["test-runner
+    Tests → types → lint → build"]
+    TEST --> REV
+
+    REV["reviewer
+    Code quality + security review"]
+    REV --> SEV{Critical or high\nfindings?}
+
+    SEV -->|"yes (iteration 0)"| AUTOFIX["Auto-fix round
+    Re-implement using
+    reviewer findings"]
+    AUTOFIX --> TEST2["test-runner"]
+    TEST2 --> REV2["reviewer"]
+    REV2 --> INT2
+
+    SEV -->|"no, or iteration 1"| INT2
+
+    INT2[/"⏸ INTERRUPT 2 — Approve merge
+    'merge' · 'hold' · 'fix: feedback'"/]
+    INT2 -->|merge| PRM
+    INT2 -->|hold| HELD([⏸ Held — resume later])
+    INT2 -->|"fix: feedback"| REPLAN["plan-feature
+    Re-plan with fix context"]
+    REPLAN --> BACK
+
+    PRM["pr-manager
+    Verify branch + clean tree
+    push → open pull request
+    marks tasks.md ✓"]
+    PRM -->|success| DONE([✅ Feature done])
+    PRM -->|fail| FAIL_PR([💥 PR failed — tasks.md unchanged])
+
+    %% ── Styles ─────────────────────────────────────────────────────────────────
+    classDef once    fill:#dbeafe,stroke:#3b82f6,color:#1e3a5f
+    classDef agent   fill:#f0fdf4,stroke:#22c55e,color:#14532d
+    classDef human   fill:#fef9c3,stroke:#eab308,color:#713f12
+    classDef fail    fill:#fee2e2,stroke:#ef4444,color:#7f1d1d
+    classDef done    fill:#dcfce7,stroke:#16a34a,color:#14532d
+    classDef decide  fill:#f5f3ff,stroke:#8b5cf6,color:#3b0764
+
+    class DD,PD,PS once
+    class ENV,DAF,PLAN,BACK,FRONT,TEST,REV,AUTOFIX,TEST2,REV2,PRM agent
+    class SETUP_M,SETUP_W once
+    class INT1,INT2,HQ human
+    class FAIL_ENV,FAIL_DAF,FAIL_PR fail
+    class DONE,FEAT done
+    class STACK,SRC,HAS_DESIGN,OQ,SEV decide
 ```
 
 ---
@@ -288,17 +389,13 @@ pr-manager                    git push → gh pr create → marks tasks.md [x]
 
 Invoked manually via the Claude Code CLI, outside the pipeline:
 
-| Agent | Purpose |
-|---|---|
-| `design-discovery` | Figma → `docs/blueprint/index.md` + `data-model.md`; run once at project start |
-| `proposal-discovery` | Proposal doc → full `docs/blueprint/` foundation; use instead of design-discovery for non-Figma projects |
-| `doc-writer` | Updates `docs/api.md`, `docs/features/<slug>.md`, `docs/architecture.md` |
-| `process-improver` | Reads feedback logs, patches agents/skills/CLAUDE.md; run after every 3–5 features |
-| `test-backend` | Runs backend suite in isolation without writing feature code |
-| `test-frontend` | Runs frontend suite in isolation |
-| `test-e2e` | Runs Maestro E2E flows |
-| `test-case-generator` | Generates Jest stub files before implementation begins |
-| `types-sync` | Manually syncs backend response types → `packages/types/` |
+| Agent | When to run | Purpose |
+|---|---|---|
+| `design-discovery` | Once at project start (Figma projects) | Figma → `docs/blueprint/index.md` + `data-model.md` + `flows/` per feature |
+| `proposal-discovery` | Once at project start (non-Figma projects) | Proposal doc → full `docs/blueprint/` foundation |
+| `project-setup` | Once after discovery | Scaffold repo, install deps, infrastructure, design tokens, build scripts |
+| `doc-writer` | After each feature is merged | Updates `docs/api.md`, `docs/features/<slug>.md`, `docs/architecture.md` |
+| `process-improver` | Every 3–5 features | Reads feedback logs, patches agent prompts, skills, and CLAUDE.md |
 
 ---
 
@@ -366,12 +463,12 @@ For Office 365: `SMTP_HOST=smtp.office365.com`, `SMTP_PORT=587`.
 
 | Agent | Default model |
 |---|---|
-| `design-analyst-flow` | Sonnet |
-| `plan-feature` | Opus |
-| `feature-implementation-backend` | Sonnet |
-| `feature-implementation-frontend` | Sonnet |
-| `test-runner` | Sonnet |
-| `reviewer` | Opus |
-| All on-demand agents | Sonnet |
+| `design-analyst-flow` | `claude-sonnet-4-6` |
+| `plan-feature` | `claude-opus-4-8` |
+| `feature-implementation-backend` | `claude-sonnet-4-6` |
+| `feature-implementation-frontend` | `claude-sonnet-4-6` |
+| `test-runner` | `claude-sonnet-4-6` |
+| `reviewer` | `claude-opus-4-8` |
+| All on-demand agents | `claude-sonnet-4-6` |
 
 Override any assignment in `prototype-orchestrator/pipeline.config.json`.

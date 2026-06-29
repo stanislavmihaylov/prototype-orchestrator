@@ -642,8 +642,8 @@ async function stepPrManager(
   ch("start", threadId, "pr_manager", "node:pr-manager", "n/a");
   const startMs = Date.now();
 
-  // Mark the run as done BEFORE committing/pushing so that commitOrchestratorLogs
-  // inside createPr captures the completed state in the feature branch.
+  // Write "done" to the run file before createPr so that commitOrchestratorLogs
+  // captures the completed state when it commits the logs into the feature branch.
   const runFilePath = join(RUNS_DIR, `${threadId}.json`);
   const runData = JSON.parse(readFileSync(runFilePath, "utf8"));
   const nowIso = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
@@ -652,15 +652,16 @@ async function stepPrManager(
   runData.updatedAt = nowIso;
   writeFileSync(runFilePath, JSON.stringify(runData, null, 2));
 
-  // Mark feature complete in tasks.md before the PR commit so it lands in the branch.
-  markTaskComplete(featureSlug);
-
+  // markTaskComplete is intentionally called AFTER createPr succeeds so that
+  // tasks.md is only marked [x] once the environment checks inside createPr
+  // (branch, clean tree, gh auth) have all passed.
   let succeeded = false;
   let output = "";
   try {
     const result = createPr(PROJECT_ROOT, featureSlug, featureDescription);
     output = `PR ${result.alreadyExisted ? "already exists" : "created"}: ${result.url}\nTitle: ${result.title}`;
     succeeded = true;
+    markTaskComplete(featureSlug);
   } catch (err) {
     output = err instanceof Error ? err.message : String(err);
     console.error(`[pipeline] pr-manager error: ${output}`);
