@@ -20,6 +20,7 @@ import {
   TSX,
   RUNS_DIR,
   RESPONSES_DIR,
+  PREVIEWS_DIR,
 } from "./common/paths";
 import { spawnSync } from "child_process";
 import {
@@ -39,6 +40,8 @@ import { createPr } from "./pr-manager";
 // RUNS_DIR, RESPONSES_DIR) are imported from ./common/paths. File-specific ones:
 const CHECKPOINT = join(__dirname, "checkpoint-helper.ts");
 const NOTIFY = join(__dirname, "notify.ts");
+
+mkdirSync(PREVIEWS_DIR, { recursive: true });
 
 if (!existsSync(CLAUDE_DIR)) {
   console.error(
@@ -448,7 +451,7 @@ async function stepDesignAnalystFlow(
   ch("state", threadId, "featureSlug", featureSlug);
   ch("state", threadId, "featureDescription", featureDescription);
 
-  const previewFile = `/tmp/preview-design-${threadId}.txt`;
+  const previewFile = join(PREVIEWS_DIR, `preview-design-${threadId}.txt`);
   writeFileSync(previewFile, r.output.slice(0, 300));
   ch("preview", threadId, "design_analyst_flow", previewFile);
 
@@ -679,7 +682,7 @@ async function stepPrManager(
     outputTokens: 0,
     totalTokens: 0,
   };
-  const previewFile = `/tmp/preview-pr-manager-${threadId}.txt`;
+  const previewFile = join(PREVIEWS_DIR, `preview-pr-manager-${threadId}.txt`);
   writeFileSync(previewFile, output.slice(0, 300));
   finishNode(threadId, "pr_manager", fakeResult, succeeded);
   ch("preview", threadId, "pr_manager", previewFile);

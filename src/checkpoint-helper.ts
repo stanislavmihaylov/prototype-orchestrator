@@ -11,14 +11,9 @@
  */
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from 'fs'
-import { join, resolve } from 'path'
+import { join } from 'path'
 import { BLENDED_RATE, computeCost, modelTier } from './common/pricing'
-
-const ORCH_DIR          = join(__dirname, '..')
-const PROJECT_ROOT      = join(ORCH_DIR, '..')
-const DATA_DIR          = process.env.PIPELINE_DATA_DIR ? resolve(PROJECT_ROOT, process.env.PIPELINE_DATA_DIR) : ORCH_DIR
-const RUNS_DIR          = join(DATA_DIR, 'runs')
-const INTERACTIONS_DIR  = join(DATA_DIR, 'interactions')
+import { DATA_DIR, RUNS_DIR, INTERACTIONS_DIR, FEEDBACK_DIR } from './common/paths'
 
 function nowIso(): string {
   return new Date().toISOString().replace(/\.\d{3}Z$/, 'Z')
@@ -330,7 +325,6 @@ if (cmd === 'create') {
   // Creates/overwrites orchestrator_logs/logs/feedback/<threadId>-<type>.json
   const [threadId, type, featureSlug, agent, ...descParts] = args
   const description = descParts.join(' ').slice(0, 500)
-  const FEEDBACK_DIR = join(DATA_DIR, 'logs', 'feedback')
   mkdirSync(FEEDBACK_DIR, { recursive: true })
   const fpath = join(FEEDBACK_DIR, `${threadId}-${type}.json`)
   const entry = {
@@ -348,7 +342,6 @@ if (cmd === 'create') {
   // feedback-resolve <threadId> <type: review_finding|plan_rejection> <...resolution>
   const [threadId, type, ...resParts] = args
   const resolution = resParts.join(' ') || 'resolved'
-  const FEEDBACK_DIR = join(DATA_DIR, 'logs', 'feedback')
   const fpath = join(FEEDBACK_DIR, `${threadId}-${type}.json`)
   try {
     const entry = JSON.parse(readFileSync(fpath, 'utf8'))

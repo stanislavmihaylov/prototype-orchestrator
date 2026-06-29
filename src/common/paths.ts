@@ -30,3 +30,6 @@ export const DATA_DIR = process.env.PIPELINE_DATA_DIR
   : ORCH_DIR;
 export const RUNS_DIR = join(DATA_DIR, "runs");
 export const RESPONSES_DIR = join(DATA_DIR, "responses");
+export const INTERACTIONS_DIR = join(DATA_DIR, "interactions");
+export const PREVIEWS_DIR = join(DATA_DIR, "previews");
+export const FEEDBACK_DIR = join(DATA_DIR, "logs", "feedback");

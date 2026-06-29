@@ -14,13 +14,10 @@ import {
   PROJECT_ROOT,
   CLAUDE_DIR,
   RUNS_DIR,
+  RESPONSES_DIR,
+  INTERACTIONS_DIR,
   TSX,
 } from "./common/paths";
-
-// Shared path constants (ORCH_DIR, PROJECT_ROOT, CLAUDE_DIR, TSX, DATA_DIR,
-// RUNS_DIR, RESPONSES_DIR) are imported from ./common/paths. File-specific ones:
-const INTERACTIONS_DIR = join(DATA_DIR, "interactions");
-const RESPONSES_DIR = join(DATA_DIR, "responses");
 const PIPELINE_SCRIPT = join(__dirname, "pipeline.ts");
 const PORT = parseInt(process.env.PIPELINE_DASHBOARD_PORT ?? "4242", 10);
 
