@@ -20,6 +20,7 @@ import {
   TSX,
   RUNS_DIR,
   RESPONSES_DIR,
+  PREVIEWS_DIR,
 } from "./common/paths";
 import { spawnSync } from "child_process";
 import {
@@ -39,6 +40,8 @@ import { createPr } from "./pr-manager";
 // RUNS_DIR, RESPONSES_DIR) are imported from ./common/paths. File-specific ones:
 const CHECKPOINT = join(__dirname, "checkpoint-helper.ts");
 const NOTIFY = join(__dirname, "notify.ts");
+
+mkdirSync(PREVIEWS_DIR, { recursive: true });
 
 if (!existsSync(CLAUDE_DIR)) {
   console.error(
@@ -448,7 +451,7 @@ async function stepDesignAnalystFlow(
   ch("state", threadId, "featureSlug", featureSlug);
   ch("state", threadId, "featureDescription", featureDescription);
 
-  const previewFile = `/tmp/preview-design-${threadId}.txt`;
+  const previewFile = join(PREVIEWS_DIR, `preview-design-${threadId}.txt`);
   writeFileSync(previewFile, r.output.slice(0, 300));
   ch("preview", threadId, "design_analyst_flow", previewFile);
 
@@ -595,7 +598,7 @@ async function stepTests(
   );
   const scopeArg =
     scope === "backend" ? "backend" : scope === "mobile" ? "mobile" : "full";
-  const r = runAgent(
+  const r = await runAgentWithRetry(
     "test-runner",
     `Scope: ${scopeArg}. Run all tests for feature: ${featureSlug}`,
   );
@@ -642,8 +645,8 @@ async function stepPrManager(
   ch("start", threadId, "pr_manager", "node:pr-manager", "n/a");
   const startMs = Date.now();
 
-  // Mark the run as done BEFORE committing/pushing so that commitOrchestratorLogs
-  // inside createPr captures the completed state in the feature branch.
+  // Write "done" to the run file before createPr so that commitOrchestratorLogs
+  // captures the completed state when it commits the logs into the feature branch.
   const runFilePath = join(RUNS_DIR, `${threadId}.json`);
   const runData = JSON.parse(readFileSync(runFilePath, "utf8"));
   const nowIso = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
@@ -652,15 +655,16 @@ async function stepPrManager(
   runData.updatedAt = nowIso;
   writeFileSync(runFilePath, JSON.stringify(runData, null, 2));
 
-  // Mark feature complete in tasks.md before the PR commit so it lands in the branch.
-  markTaskComplete(featureSlug);
-
+  // markTaskComplete is intentionally called AFTER createPr succeeds so that
+  // tasks.md is only marked [x] once the environment checks inside createPr
+  // (branch, clean tree, gh auth) have all passed.
   let succeeded = false;
   let output = "";
   try {
     const result = createPr(PROJECT_ROOT, featureSlug, featureDescription);
     output = `PR ${result.alreadyExisted ? "already exists" : "created"}: ${result.url}\nTitle: ${result.title}`;
     succeeded = true;
+    markTaskComplete(featureSlug);
   } catch (err) {
     output = err instanceof Error ? err.message : String(err);
     console.error(`[pipeline] pr-manager error: ${output}`);
@@ -678,7 +682,7 @@ async function stepPrManager(
     outputTokens: 0,
     totalTokens: 0,
   };
-  const previewFile = `/tmp/preview-pr-manager-${threadId}.txt`;
+  const previewFile = join(PREVIEWS_DIR, `preview-pr-manager-${threadId}.txt`);
   writeFileSync(previewFile, output.slice(0, 300));
   finishNode(threadId, "pr_manager", fakeResult, succeeded);
   ch("preview", threadId, "pr_manager", previewFile);
@@ -1208,11 +1212,39 @@ async function resumePipeline(threadId: string): Promise<void> {
       console.log(`Pipeline ${threadId} is already complete.`);
       return;
 
-    case "aborted":
+    case "aborted": {
       console.log(
-        `Pipeline ${threadId} was held/aborted. Last state: ${state.featureSlug}`,
+        `\n[pipeline] Resuming held pipeline for "${state.featureSlug}" — presenting Interrupt #2 again.`,
       );
+      const { decision, feedback } = await interrupt2(
+        threadId,
+        state.featureDescription,
+        true,
+        state.reviewSeverity ?? "clean",
+        state.iteration ?? 0,
+      );
+      if (decision === "merge") {
+        ch("state", threadId, "status", "running");
+        await stepPrManager(
+          threadId,
+          state.featureSlug,
+          state.featureDescription,
+        );
+      } else if (decision === "fix") {
+        ch("state", threadId, "status", "running");
+        await continueFromImplementation(
+          threadId,
+          loadRun(threadId).state,
+          feedback,
+        );
+      } else {
+        ch("state", threadId, "status", "aborted");
+        console.log(
+          `Pipeline held. Resume with:\n  ./pipeline resume ${threadId}`,
+        );
+      }
       return;
+    }
 
     case "failed": {
       const failedNode = [...run.nodes]
@@ -1495,6 +1527,48 @@ async function rerunStep(threadId: string): Promise<void> {
             "errorMessage",
             "Env check passed — run ./pipeline resume to continue with design/plan",
           );
+        }
+        break;
+      }
+
+      case "design_analyst_flow": {
+        const design = await stepDesignAnalystFlow(threadId, state.flowName);
+        const slug = design.featureSlug || state.featureSlug;
+        const desc = design.featureDescription || state.featureDescription;
+        ch("state", threadId, "featureSlug", slug);
+        ch("state", threadId, "featureDescription", desc);
+        const qAnswers: Record<string, string> =
+          typeof state.questionAnswers === "string"
+            ? JSON.parse(state.questionAnswers || "{}")
+            : (state.questionAnswers ?? {});
+        const planResult = await stepPlanFeature(
+          threadId,
+          slug,
+          desc,
+          state.planFeedback ?? "",
+          qAnswers,
+        );
+        const plan = planResult.plan;
+        const scope =
+          state.scope && state.scope !== "auto"
+            ? state.scope
+            : planResult.scope;
+        ch("state", threadId, "scope", scope);
+        const response = await interrupt1(threadId, desc, plan, qAnswers);
+        if (response.toLowerCase() === "approved") {
+          ch("state", threadId, "status", "running");
+          await continueFromImplementation(threadId, loadRun(threadId).state);
+        } else {
+          ch("state", threadId, "planFeedback", response);
+          ch(
+            "feedback",
+            threadId,
+            "plan_rejection",
+            slug,
+            "plan-feature",
+            `Plan rejected. Feedback: ${response}`,
+          );
+          console.log("Plan feedback saved. Rerun to re-plan.");
         }
         break;
       }

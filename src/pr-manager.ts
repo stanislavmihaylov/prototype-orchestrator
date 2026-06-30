@@ -180,10 +180,13 @@ export function createPr(projectRoot: string, featureSlug: string, featureDescri
   const ghAuth = sh('gh auth status 2>&1', projectRoot)
   if (!ghAuth.ok) throw new Error('gh CLI is not authenticated. Run: gh auth login')
 
+  // Verify branch and auth before making any commits — avoids committing to main
+  // or polluting the tree if the environment isn't ready.
+  const branch = verifyBranch(projectRoot)
+
   commitUnstagedFeatureChanges(projectRoot, featureSlug)
   commitOrchestratorLogs(projectRoot)
   verifyCleanTree(projectRoot)
-  const branch = verifyBranch(projectRoot)
   pushBranch(projectRoot, branch)
 
   const existing = checkExistingPr(projectRoot)

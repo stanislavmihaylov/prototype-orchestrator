@@ -258,33 +258,38 @@ Each page Server Component:
 
 #### 3c. Client Component patterns
 
-**Design system:** this project uses Chakra UI v2 + `@mentormate/marigold` theme.
-Before specifying any UI component in this plan, state which Marigold or Chakra
-component covers it. Use the lookup order:
-1. `@mentormate/marigold` — use a themed Marigold component if one exists
-2. `@chakra-ui/react` — use a Chakra primitive otherwise
-3. Local wrapper — only if neither library covers the need
+**Design system:** this project uses **Tailwind CSS + shadcn/ui**. Use shadcn/ui primitives
+from `components/ui/` for interactive elements and shared layout components from
+`components/layout/` for common patterns.
 
 For every Client Component in the plan, explicitly list:
-- Which Marigold/Chakra components compose it (e.g. `Table`, `FormControl`, `Button`, `Alert`)
-- Which Chakra style props carry the visual spec (spacing, colour, variant)
-- No Tailwind class strings or inline `style={{}}` props
+- Which shadcn/ui primitives it uses (`<Button>`, `<Input>`, `<Card>`, `<Select>`,
+  `<Dialog>`, `<Badge>` from `@/components/ui/`)
+- Which shared layout components it uses (`<PageHeader>`, `<EmptyState>`,
+  `<LoadingSpinner>`, `<ErrorMessage>` from `@/components/layout/`)
+- Any remaining Tailwind utility classes for layout/spacing not covered by primitives
+- No inline `style={{}}` props except for truly dynamic values
 
 Standard patterns:
-- `<Feature>Table` — `TableContainer` + Chakra `Table/Thead/Tbody/Tr/Th/Td`; row click via `onClick` + `useRouter`; empty state via `<Text color="gray.500">`
-- `<Feature>Form` — `FormControl` + `FormLabel` + `Input`/`Select`/`Textarea` per field; submit via `fetch()`; `router.refresh()` on success; errors via `<Alert status="error">`
-- Error states use Chakra `<Alert status="error">` with `role="alert"` for accessibility
+- `<Feature>Table` — `<table>` with `divide-y divide-gray-200`; row click via `onClick`
+  + `useRouter`; empty state via `<EmptyState>` from `components/layout/`
+- `<Feature>Form` — `<form>` with `<label>` + `<Input>`/`<Select>` shadcn primitives per
+  field; submit `<Button>`; `router.refresh()` on success; errors via `<ErrorMessage>`
+  from `components/layout/`
+- Error states use `<ErrorMessage message={...} />` (renders a `role="alert"` div with
+  `bg-destructive/10 text-destructive` using CSS variable tokens)
 
 #### 3d. Navigation additions
 
 Update `app/(internal)/layout.tsx` or a sidebar component.
-Navigation links use Next.js `Link` composed with Chakra's `Link`:
+Navigation links use Next.js `<Link>` directly:
 
 ```tsx
-import NextLink from 'next/link'
-import { Link } from '@chakra-ui/react'
+import Link from 'next/link'
 
-<Link as={NextLink} href="/<feature>">Feature Name</Link>
+<Link href="/<feature>" className="text-sm font-medium text-gray-700 hover:text-gray-900">
+  Feature Name
+</Link>
 ```
 
 Update any breadcrumb or header components that need the new route.
@@ -296,16 +301,14 @@ Update any breadcrumb or header components that need the new route.
 
 #### 3e. TDD vertical slices (RED→GREEN order)
 
-All component tests must wrap renders in a `renderWithTheme` helper (defined in
-`__tests__/test-utils.tsx`) that provides `<ChakraProvider theme={theme}>` from
-`@mentormate/marigold`. Specify this in each slice description.
+Component tests use `@testing-library/react` directly — no theme wrapper needed.
 
-Slice 1: `<Feature>Table` renders list of items from props (via `renderWithTheme`)
+Slice 1: `<Feature>Table` renders list of items from props
 Slice 2: `<Feature>Table` shows empty state when items array is empty
 Slice 3: `<Feature>Table` navigates to detail page on row click
-Slice 4: `<Feature>Form` renders all form fields with correct Chakra `FormLabel` text
+Slice 4: `<Feature>Form` renders all form fields with correct `<label>` text
 Slice 5: `<Feature>Form` submits to Route Handler and redirects on success
-Slice 6: `<Feature>Form` shows Chakra `Alert` error when Route Handler returns error
+Slice 6: `<Feature>Form` shows error alert when Route Handler returns error
 
 ---
 

@@ -1,12 +1,12 @@
 ---
 name: git-branch-naming
 description: >
-  Git branch naming conventions for this NestJS + React Native monorepo.
+  Git branch naming conventions for any monorepo in this pipeline.
   Pattern: <type>/<feature-slug>. Always branch from main. One feature per branch.
   Use when creating new branches for features, fixes, or maintenance.
 ---
 
-# Git Branch Naming — NestJS + React Native Monorepo
+# Git Branch Naming
 
 ## Pattern
 
@@ -21,11 +21,11 @@ description: >
 
 | Type | Purpose | Example |
 |---|---|---|
-| `feat` | New feature (backend + mobile) | `feat/user-auth` |
+| `feat` | New feature | `feat/user-auth` |
 | `fix` | Bug fix | `fix/login-token-expiry` |
 | `chore` | Maintenance, deps, config | `chore/agent-improvements` |
-| `refactor` | Code restructure, no behavior change | `refactor/journal-store` |
-| `test` | Adding or updating tests only | `test/mood-tracking-coverage` |
+| `refactor` | Code restructure, no behavior change | `refactor/auth-store` |
+| `test` | Adding or updating tests only | `test/user-coverage` |
 | `docs` | Documentation only | `docs/api-contracts` |
 
 ## Rules
@@ -39,13 +39,13 @@ description: >
 ## Examples
 
 ```bash
-# Feature (full stack — backend + mobile)
+# Full-stack feature
 git checkout -b feat/user-auth
 
-# Feature (backend only)
+# Backend-only
 git checkout -b feat/journal-api
 
-# Feature (mobile only)
+# Frontend / mobile screen
 git checkout -b feat/mood-tracker-screen
 
 # Bug fix

@@ -76,20 +76,10 @@ jest.mock('@/lib/prisma', () => ({
 Common mocks to add if missing in React component tests:
 
 ```typescript
-// Chakra UI / Marigold theme wrapper — all component renders must use this
-// __tests__/test-utils.tsx
-import { render } from '@testing-library/react'
-import { ChakraProvider } from '@chakra-ui/react'
-import { theme } from '@mentormate/marigold'
-
-export function renderWithTheme(ui: React.ReactElement) {
-  return render(<ChakraProvider theme={theme}>{ui}</ChakraProvider>)
-}
+// This project uses Tailwind CSS — no theme provider wrapper is needed.
+// Use @testing-library/react render directly:
+import { render, screen } from '@testing-library/react'
 ```
-
-If a component test fails with Chakra context errors, the fix is always to wrap the
-render call in `renderWithTheme` from `__tests__/test-utils.tsx` (create the file if
-it does not exist).
 
 ```typescript
 // Mock Next.js navigation

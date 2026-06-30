@@ -1,12 +1,12 @@
 ---
 name: git-commit
 description: >
-  Conventional Commits for this NestJS + React Native monorepo.
+  Conventional Commits for any monorepo in this pipeline.
   Format: <type>(<scope>): <description>. Covers scopes, examples,
   atomic commit rules, and what never to commit.
 ---
 
-# Git Commit Skill — NestJS + React Native Monorepo
+# Git Commit Skill
 
 ## Format
 
@@ -28,28 +28,30 @@ All three parts are required. Keep the full message under 72 characters.
 | `docs` | Documentation only |
 | `ci` | CI/CD pipeline changes |
 
-## Scopes for this monorepo
+## Scopes
+
+Scopes map to the monorepo's `apps/` subdirectories and shared infrastructure. Check `CLAUDE.md` for the exact structure of this project.
 
 | Scope | What it covers |
 |---|---|
-| `backend` | Changes in `apps/backend/` |
-| `mobile` | Changes in `apps/mobile/` |
-| `types` | Changes in `packages/types/` |
+| `backend` | Server-side application (`apps/backend/`) |
+| `frontend` or `mobile` | Client application (`apps/frontend/` or `apps/mobile/`) |
+| `types` | Shared type package (`packages/types/`) |
 | `orchestrator` | Changes in `prototype-orchestrator/` |
 | `agents` | Changes in `.claude/agents/` |
-| `deps` | Dependency updates (`package.json`, `pnpm-lock.yaml`) |
+| `deps` | Dependency updates (`package.json`, lock file) |
 
 ## Examples
 
 ```
 feat(backend): add journal entry CRUD endpoints
+feat(frontend): implement journal list page
 feat(mobile): implement journal list screen
 feat(types): add JournalEntry request and response types
 fix(backend): return 404 instead of 500 when entry not found
-fix(mobile): attach Bearer token to mood tracking store actions
 chore(deps): upgrade NestJS to v11
-refactor(mobile): extract auth token helper into shared hook
-test(backend): add service-level tests for MoodLog ownership checks
+refactor(backend): extract auth token helper into shared module
+test(backend): add service-level tests for ownership checks
 docs(agents): update plan-feature with API contract section
 chore(agents): apply process improvements from feedback analysis
 ```
@@ -59,8 +61,8 @@ chore(agents): apply process improvements from feedback analysis
 ### Keep commits atomic
 
 One logical change per commit. Do not bundle:
-- Backend + mobile changes in one commit (commit separately)
-- Feature code + unrelated refactors
+- Backend and client changes in one commit (commit separately)
+- Feature code and unrelated refactors
 - Multiple features
 
 ### Good commit messages
@@ -74,7 +76,7 @@ One logical change per commit. Do not bundle:
 For non-obvious changes, add a body after a blank line:
 
 ```
-fix(backend): scope mood logs to authenticated user
+fix(backend): scope records to authenticated user
 
 Previously findAll() returned all records regardless of userId.
 Now filters by req.user.sub to prevent data leakage.
@@ -87,9 +89,9 @@ Closes #47
 | File | Why |
 |---|---|
 | `.env`, `.env.local`, `.env.*` | Contains secrets |
-| `node_modules/` | Managed by pnpm |
+| `node_modules/` | Managed by package manager |
 | `dist/`, `build/` | Generated artifacts |
-| `apps/backend/generated/` | Prisma generated client |
+| `*/generated/` | ORM-generated client files |
 | `*.log` | Runtime logs |
 | `.DS_Store` | macOS metadata |
 

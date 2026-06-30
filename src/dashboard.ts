@@ -14,13 +14,10 @@ import {
   PROJECT_ROOT,
   CLAUDE_DIR,
   RUNS_DIR,
+  RESPONSES_DIR,
+  INTERACTIONS_DIR,
   TSX,
 } from "./common/paths";
-
-// Shared path constants (ORCH_DIR, PROJECT_ROOT, CLAUDE_DIR, TSX, DATA_DIR,
-// RUNS_DIR, RESPONSES_DIR) are imported from ./common/paths. File-specific ones:
-const INTERACTIONS_DIR = join(DATA_DIR, "interactions");
-const RESPONSES_DIR = join(DATA_DIR, "responses");
 const PIPELINE_SCRIPT = join(__dirname, "pipeline.ts");
 const PORT = parseInt(process.env.PIPELINE_DASHBOARD_PORT ?? "4242", 10);
 
@@ -187,6 +184,71 @@ createServer((req: IncomingMessage, res: ServerResponse) => {
         res.end(JSON.stringify({ error: e.message }));
       }
     });
+    return;
+  }
+
+  // Stop a running pipeline — kills the process group then marks the run aborted
+  if (req.method === "POST" && req.url?.startsWith("/api/pipeline/stop/")) {
+    const threadId = req.url.slice("/api/pipeline/stop/".length);
+    const runFilePath = join(RUNS_DIR, `${threadId}.json`);
+    if (!existsSync(runFilePath)) {
+      res.writeHead(404);
+      res.end("Not found");
+      return;
+    }
+    try {
+      const runData = JSON.parse(readFileSync(runFilePath, "utf-8"));
+      const pid: number = runData.pid ?? 0;
+      if (pid > 0) {
+        try {
+          process.kill(-pid, "SIGTERM");
+        } catch { /* already dead */ }
+        // Escalate to SIGKILL after 2 s if the process group is still alive
+        setTimeout(() => {
+          try { process.kill(-pid, "SIGKILL"); } catch { /* already dead */ }
+        }, 2000);
+      }
+      // Mark any stuck running nodes as stopped
+      for (const node of runData.nodes ?? []) {
+        if (node.status === "running") {
+          node.status = "failed";
+          node.error = "Stopped by user";
+          if (node.startedAt)
+            node.durationMs = Date.now() - new Date(node.startedAt).getTime();
+        }
+      }
+      runData.state.status = "aborted";
+      runData.state.errorMessage = "Stopped by user";
+      runData.pid = null;
+      runData.updatedAt = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+      writeFileSync(runFilePath, JSON.stringify(runData, null, 2));
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true }));
+    } catch (e: any) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  // Resume a held (aborted) pipeline
+  if (req.method === "POST" && req.url?.startsWith("/api/pipeline/resume/")) {
+    const threadId = req.url.slice("/api/pipeline/resume/".length);
+    const path = join(RUNS_DIR, `${threadId}.json`);
+    if (!existsSync(path)) {
+      res.writeHead(404);
+      res.end("Not found");
+      return;
+    }
+    const child = spawn("node", [TSX, PIPELINE_SCRIPT, "resume", threadId], {
+      cwd: PROJECT_ROOT,
+      detached: true,
+      stdio: "ignore",
+      env: { ...process.env },
+    });
+    child.unref();
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ ok: true }));
     return;
   }
 

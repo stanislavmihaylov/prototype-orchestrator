@@ -1,10 +1,11 @@
 /**
- * env-check.ts — Node.js replacement for the environment-checker agent.
- * Checks prerequisites for the Next.js full-stack project.
+ * env-check.ts — Checks prerequisites for the pipeline orchestrator.
+ * Only verifies what the pipeline itself needs to run; stack-specific
+ * checks (Prisma, DB, framework deps) are left to the implementation agents.
  */
 
 import { spawnSync } from 'child_process'
-import { existsSync, readFileSync } from 'fs'
+import { existsSync } from 'fs'
 import { join } from 'path'
 
 export interface CheckResult {
@@ -29,14 +30,14 @@ function sh(cmd: string): { stdout: string; stderr: string; ok: boolean } {
   }
 }
 
-function readEnvFile(path: string): Record<string, string> {
-  if (!existsSync(path)) return {}
-  const vars: Record<string, string> = {}
-  for (const line of readFileSync(path, 'utf8').split('\n')) {
-    const m = line.match(/^([A-Z0-9_]+)=(.*)$/)
-    if (m) vars[m[1]] = m[2]
+function checkNodeVersion(): CheckResult {
+  const r = sh('node --version 2>/dev/null')
+  if (r.ok) {
+    const major = parseInt(r.stdout.replace('v', '').split('.')[0], 10)
+    if (major >= 20) return { name: 'Node >= 20', status: 'PASS', notes: r.stdout }
+    return { name: 'Node >= 20', status: 'FAIL', notes: `${r.stdout} — need >= 20`, fix: 'nvm install 20 && nvm use 20' }
   }
-  return vars
+  return { name: 'Node >= 20', status: 'FAIL', notes: 'node not found on PATH', fix: 'nvm install 20 && nvm use 20' }
 }
 
 function checkPnpm(): CheckResult {
@@ -49,105 +50,14 @@ function checkPnpm(): CheckResult {
   return { name: 'pnpm installed', status: 'FAIL', notes: 'not found on PATH', fix: 'npm install -g pnpm  OR  brew install pnpm' }
 }
 
-function checkNodeVersion(): CheckResult {
-  const r = sh('node --version 2>/dev/null')
-  if (r.ok) {
-    const major = parseInt(r.stdout.replace('v', '').split('.')[0], 10)
-    if (major >= 20) return { name: 'Node >= 20', status: 'PASS', notes: r.stdout }
-    return { name: 'Node >= 20', status: 'FAIL', notes: `${r.stdout} — need >= 20`, fix: 'nvm install 20 && nvm use 20' }
-  }
-  return { name: 'Node >= 20', status: 'FAIL', notes: 'node not found on PATH', fix: 'nvm install 20 && nvm use 20' }
-}
-
-function checkEnvFile(projectRoot: string): CheckResult {
-  const localEnv  = join(projectRoot, '.env.local')
-  const envFile   = join(projectRoot, '.env')
-  if (existsSync(localEnv) || existsSync(envFile)) {
-    return { name: '.env.local present', status: 'PASS', notes: 'environment file found' }
+function checkDepsInstalled(projectRoot: string): CheckResult {
+  if (existsSync(join(projectRoot, 'node_modules', '.bin'))) {
+    return { name: 'Dependencies installed', status: 'PASS', notes: 'node_modules/.bin found' }
   }
   return {
-    name: '.env.local present', status: 'FAIL',
-    notes: 'neither .env.local nor .env found in project root',
-    fix:   'cp .env.example .env.local and fill in DATABASE_URL, NEXTAUTH_URL, NEXTAUTH_SECRET',
-  }
-}
-
-function checkEnvVars(projectRoot: string): CheckResult[] {
-  const localEnv = join(projectRoot, '.env.local')
-  const envFile  = join(projectRoot, '.env')
-  const path     = existsSync(localEnv) ? localEnv : envFile
-  const envVars  = readEnvFile(path)
-
-  return ['DATABASE_URL', 'NEXTAUTH_URL', 'NEXTAUTH_SECRET'].map(key => {
-    if (envVars[key]) return { name: key, status: 'PASS' as const, notes: 'present' }
-    return {
-      name: key, status: 'FAIL' as const,
-      notes: `missing from ${existsSync(localEnv) ? '.env.local' : '.env'}`,
-      fix:   `Add ${key} to .env.local`,
-    }
-  })
-}
-
-function checkAppDeps(projectRoot: string): CheckResult {
-  if (existsSync(join(projectRoot, 'node_modules', 'next'))) {
-    return { name: 'App deps installed', status: 'PASS', notes: 'node_modules/next found' }
-  }
-  return {
-    name: 'App deps installed', status: 'FAIL',
-    notes: 'node_modules/next missing',
-    fix:   'pnpm install',
-  }
-}
-
-function checkPrismaGenerated(projectRoot: string): CheckResult {
-  const clientDir = join(projectRoot, 'node_modules', '.prisma', 'client')
-  const altDir    = join(projectRoot, 'node_modules', '@prisma', 'client')
-  if (existsSync(clientDir) || existsSync(altDir)) {
-    return { name: 'Prisma client generated', status: 'PASS', notes: '' }
-  }
-  return {
-    name: 'Prisma client generated', status: 'WARN',
-    notes: '.prisma/client not found — run pnpm db:generate after setting DATABASE_URL',
-    fix:   'pnpm db:generate',
-  }
-}
-
-function checkDocker(): CheckResult {
-  const r = sh('docker info 2>/dev/null')
-  if (!r.ok) {
-    return {
-      name: 'Docker running', status: 'WARN',
-      notes: 'Docker daemon not reachable — skipping container checks',
-    }
-  }
-  return { name: 'Docker running', status: 'PASS', notes: 'daemon reachable' }
-}
-
-function checkDbConnection(projectRoot: string): CheckResult {
-  const localEnv = join(projectRoot, '.env.local')
-  const envFile  = join(projectRoot, '.env')
-  const path     = existsSync(localEnv) ? localEnv : envFile
-  const envVars  = readEnvFile(path)
-  // process.env.DATABASE_URL takes precedence — set by loadDotEnv from orchestrator's .env if present
-  const url      = process.env.DATABASE_URL ?? envVars['DATABASE_URL']
-
-  if (!url || url.includes('USER:PASSWORD')) {
-    return { name: 'DB connection', status: 'WARN', notes: 'DATABASE_URL not set — skipping connectivity check' }
-  }
-
-  const r = sh(`node -e "
-    const { Client } = require('pg');
-    const c = new Client({ connectionString: '${url}' });
-    c.connect().then(() => c.end()).then(() => { console.log('OK'); process.exit(0); }).catch(e => { console.error(e.message); process.exit(1); });
-  " 2>/dev/null`)
-
-  if (r.ok && r.stdout.includes('OK')) {
-    return { name: 'DB connection', status: 'PASS', notes: 'PostgreSQL reachable' }
-  }
-  return {
-    name: 'DB connection', status: 'FAIL',
-    notes: `cannot connect: ${(r.stderr || r.stdout).slice(0, 120)}`,
-    fix:   'Ensure the database is running and DATABASE_URL is correct',
+    name: 'Dependencies installed', status: 'FAIL',
+    notes: 'node_modules/.bin missing — run pnpm install',
+    fix: 'pnpm install',
   }
 }
 
@@ -184,14 +94,9 @@ function checkFeatureBranch(projectRoot: string, featureSlug: string): CheckResu
 
 export function runEnvCheck(projectRoot: string, featureSlug: string): EnvCheckResult {
   const results: CheckResult[] = [
-    checkPnpm(),
     checkNodeVersion(),
-    checkEnvFile(projectRoot),
-    ...checkEnvVars(projectRoot),
-    checkAppDeps(projectRoot),
-    checkPrismaGenerated(projectRoot),
-    checkDocker(),
-    checkDbConnection(projectRoot),
+    checkPnpm(),
+    checkDepsInstalled(projectRoot),
     checkGitClean(projectRoot),
     checkFeatureBranch(projectRoot, featureSlug),
   ]

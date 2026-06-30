@@ -616,6 +616,31 @@ async function rerunFailedStep(threadId) {
   } catch(e) { alert('Rerun failed: ' + e.message) }
 }
 
+async function resumeAbortedPipeline(threadId) {
+  try {
+    const r = await fetch(`/api/pipeline/resume/${threadId}`, { method: 'POST' })
+    const d = await r.json()
+    if (d.ok) optimisticRunning(threadId)
+    else alert('Resume failed: ' + (d.error ?? 'unknown error'))
+  } catch(e) { alert('Resume failed: ' + e.message) }
+}
+
+async function stopPipeline(threadId) {
+  if (!confirm('Stop this pipeline run and kill all running processes?')) return
+  try {
+    const r = await fetch(`/api/pipeline/stop/${threadId}`, { method: 'POST' })
+    const d = await r.json()
+    if (d.ok) {
+      const run = runs.find(r => r.threadId === threadId)
+      if (run) { run.state.status = 'aborted'; run.state.errorMessage = 'Stopped by user' }
+      lastDetailData[threadId] = null
+      renderSidebar()
+      const res2 = await fetch('/api/runs/' + threadId)
+      if (res2.ok) renderDetail(await res2.json())
+    } else alert('Stop failed: ' + (d.error ?? 'unknown error'))
+  } catch(e) { alert('Stop failed: ' + e.message) }
+}
+
 function rerunPlan(threadId) {
   // Clear bad plan content before optimistic update so it doesn't flash
   const run = runs.find(r => r.threadId === threadId)
@@ -992,6 +1017,8 @@ function renderDetail(run) {
   const nodeDetail  = failedNode?.error ? failedNode.error.trim() : ''
   const errorBanner = (state.status==='failed' && state.errorMessage)
     ? `<div class="run-error-banner"><div class="error-icon">✕</div><div style="flex:1"><div class="error-label">Pipeline failed — ${escHtml(failedNode?.node ?? 'unknown step')}</div><div class="error-text">${escHtml(state.errorMessage)}</div>${nodeDetail ? `<div class="error-box" style="margin-top:10px;max-height:160px;overflow-y:auto">${escHtml(nodeDetail)}</div>` : ''}</div><button class="btn btn-warning" style="flex-shrink:0;align-self:flex-start" onclick="rerunFailedStep('${run.threadId}')">↻ Rerun ${escHtml(failedNode?.node ?? 'step')}</button></div>` : ''
+  const abortedBanner = (state.status==='aborted')
+    ? `<div class="run-error-banner" style="border-color:color-mix(in srgb,var(--aborted) 40%,transparent);background:color-mix(in srgb,var(--aborted) 8%,var(--surface))"><div class="error-icon" style="color:var(--aborted)">⏸</div><div style="flex:1"><div class="error-label" style="color:var(--aborted)">Pipeline held after review</div><div class="error-text">Resume to merge the PR, request fixes, or hold again.</div></div><button class="btn btn-warning" style="flex-shrink:0;align-self:flex-start" onclick="resumeAbortedPipeline('${run.threadId}')">▶ Resume Pipeline</button></div>` : ''
 
   const runTokBar = t.totalTokens ? `<div class="token-bar-wrap">
     ${tokenBar(t, false)}
@@ -1008,6 +1035,7 @@ function renderDetail(run) {
       <div class="detail-title">
         ${escHtml(slug)} ${statusBadge(state.status??'unknown')}
         ${live?'<span class="live-badge">● LIVE</span>':''}
+        ${(live || isWaiting(run))?`<button class="btn btn-danger" style="margin-left:auto;font-size:12px;padding:4px 12px" onclick="stopPipeline('${run.threadId}')">⏹ Stop</button>`:''}
       </div>
       <div class="detail-meta">
         <span>Thread: ${run.threadId}</span>
@@ -1019,6 +1047,7 @@ function renderDetail(run) {
     </div>
 
     ${renderInterruptPanel(run)}
+    ${abortedBanner}
     ${live && runningNode ? `
     <div style="background:color-mix(in srgb,var(--running) 8%,var(--surface));border:1px solid color-mix(in srgb,var(--running) 35%,transparent);border-radius:8px;padding:14px 18px;margin-bottom:24px;display:flex;align-items:center;gap:14px">
       <span style="font-size:18px;display:inline-block;animation:spin 1.2s linear infinite;line-height:1">⟳</span>

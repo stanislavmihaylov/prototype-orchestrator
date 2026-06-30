@@ -16,8 +16,8 @@ You perform a combined code quality and OWASP security review of Next.js Route H
 
 ## Stack reference
 
-**API layer:** TypeScript, Next.js App Router Route Handlers, Prisma ORM (v7), PostgreSQL (Docker), NextAuth.js v4 (Credentials provider, JWT session strategy), Zod validation
-**UI layer:** TypeScript, Next.js App Router (Server + Client Components), Chakra UI v2, `@mentormate/marigold` theme
+**API layer:** TypeScript, Next.js App Router Route Handlers, Prisma ORM, PostgreSQL (Docker), NextAuth.js v4 (Credentials provider, JWT session strategy), Zod validation
+**UI layer:** TypeScript, Next.js App Router (Server + Client Components), Tailwind CSS, shadcn/ui (CSS variable-based theme), Zustand (client state)
 **Shared types:** `packages/types/src/` for shared DTOs and interfaces
 
 ## Step 1: Determine scope
@@ -101,10 +101,12 @@ grep -rn "passwordHash\|password" app/api/ --include="route.ts" | grep -v "test\
 - Sensitive fields (`passwordHash`) must never appear in Route Handler responses
 - Use Prisma `select` to explicitly omit sensitive fields
 
-**Audit log writes**
+**Status-changing endpoints**
 
-- Any Route Handler that transitions a `ClaimStatus` must also write an `AuditLog` record in the same Prisma `$transaction`
-- Missing audit log on a status-changing endpoint → flag as **High**
+- Any Route Handler that transitions a status field (e.g. an enum column) should do so
+  atomically — use a Prisma `$transaction` if multiple records must update together
+- If the blueprint requires an audit trail, verify the status change also writes an audit
+  record in the same transaction; missing audit write on a documented status endpoint → flag as **High**
 
 ### Frontend (Server and Client Components)
 
@@ -135,16 +137,20 @@ grep -rL "'use client'" components/ 2>/dev/null | xargs grep -l "useState\|useEf
 - Every component that uses React hooks or browser event handlers must have `'use client'` as the first line
 - Missing `'use client'` on a hook-using component → flag as **High**
 
-**Chakra UI / Marigold design system**
+**Tailwind CSS + shadcn/ui design system**
 
 ```bash
-# Look for raw Tailwind classes or inline styles
-grep -rn 'className="' components/ app/ --include="*.tsx" | grep -v node_modules | grep -v "test\|spec" | head -20
+# Look for inline styles (should be rare — only for dynamic values)
 grep -rn 'style={{' components/ app/ --include="*.tsx" | grep -v node_modules | grep -v "test\|spec" | head -20
+
+# Look for hardcoded color classes instead of CSS variable classes
+grep -rn 'text-gray-\|bg-blue-\|bg-red-\|border-gray-' components/ app/ --include="*.tsx" | grep -v node_modules | grep -v "test\|spec" | head -20
 ```
 
-- No `className` Tailwind strings — styling must use Chakra UI style props or `@mentormate/marigold` components
-- Inline `style={{}}` is acceptable only for one-off layout overrides not achievable with Chakra props; flag as **Low** if overused
+- All styling must use Tailwind `className` strings — no CSS modules or global CSS for component styling
+- Interactive elements (buttons, inputs, selects) must use shadcn/ui primitives from `components/ui/` — raw `<button>` / `<input>` HTML is a **Low** finding unless there is a documented reason
+- Colors should use CSS variable Tailwind classes (`text-foreground`, `text-muted-foreground`, `bg-primary`, `text-destructive`) not hardcoded palette classes (`text-gray-900`, `bg-blue-600`) — flag hardcoded colors as **Low**
+- Inline `style={{}}` is acceptable only for truly dynamic values (e.g. computed pixel widths); flag as **Low** if used for static styling
 
 **`router.refresh()` after mutations**
 

@@ -2,12 +2,12 @@
 name: design-analyst-flow
 description: >
   Runs once per feature. Receives a feature name and Figma node IDs from
-  docs/blueprint/index.md. Calls get_design_context and get_screenshot for
+  docs/blueprint/index.md. Calls get_figma_data and download_figma_images for
   those specific nodes. Produces docs/blueprint/flows/<feature-slug>.md with
   full layout, component, interaction, and accessibility specs for React Native.
   Triggers: after design-discovery, once per feature before plan-feature.
 model: sonnet
-tools: [Read, Write, Bash, mcp__claude_ai_Figma__get_design_context, mcp__claude_ai_Figma__get_screenshot,mcp__figma__download_figma_images]
+tools: [Read, Write, Bash, mcp__figma__get_figma_data, mcp__figma__download_figma_images]
 ---
 
 # Design Analyst — Per-Feature Flow Agent
@@ -18,7 +18,7 @@ You produce the detailed flow specification for a single feature. The output fil
 
 **If you cannot connect to Figma for any reason, you MUST fail immediately.**
 
-This applies to every Figma MCP call in this agent: `get_design_context`, `get_screenshot`, or any other Figma tool. If any call fails — tool unavailable, MCP server not running, authentication error, network error, timeout, empty result, malformed response, partial data — you MUST:
+This applies to every Figma MCP call in this agent: `get_figma_data`, `download_figma_images`, or any other Figma tool. If any call fails — tool unavailable, MCP server not running, authentication error, network error, timeout, empty result, malformed response, partial data — you MUST:
 
 1. Output exactly: `FIGMA_MCP_FAILED: <error message>`
 2. Stop. Return control to the orchestrator.
@@ -48,11 +48,19 @@ Find the entry whose name matches `flow_name` (case-insensitive). Extract its Fi
 
 Derive `feature_slug` from `flow_name`: lowercase, spaces replaced with hyphens (e.g. `"User Journaling"` → `"user-journaling"`).
 
+Next, read the skeleton flow spec created by `design-discovery`:
+
+```
+Read: docs/blueprint/flows/<feature-slug>.md
+```
+
+This file contains inferred screen names, node IDs, rough interactions, business rules, acceptance criteria, and open questions — all marked `# TODO: confirm`. Your job is to enrich this skeleton with real Figma data: replace every `# TODO: confirm` line where Figma answers it, fill in missing layout/component/interaction detail, and resolve open questions where possible. Do NOT discard sections that are already complete — carry them forward.
+
 ## Step 1: Load design context for the feature nodes
 
-Call `get_design_context` passing the feature's node IDs. If the call fails for any reason, apply the absolute rule above immediately — output `FIGMA_MCP_FAILED:` and stop.
+Read the `fileKey` from `docs/blueprint/index.md` (the value on the `**Figma File Key:**` line). Then call `mcp__figma__get_figma_data` with `fileKey` and the feature's primary `nodeId`. If the call fails for any reason, apply the absolute rule above immediately — output `FIGMA_MCP_FAILED:` and stop.
 
-This returns the full component tree, layout properties, text content, and interaction annotations for those nodes.
+This returns the full node tree, layout properties, text content, and component data for those nodes as YAML.
 
 Parse the response and extract:
 - Screen names and their hierarchy
@@ -64,24 +72,35 @@ Parse the response and extract:
 
 ## Step 2: Get screenshots
 
-Call `get_screenshot` for each node ID. If any call fails for any reason, apply the absolute rule above immediately — output `FIGMA_MCP_FAILED:` and stop. Store the visual reference mentally — use it to verify your layout descriptions are accurate.
+Call `mcp__figma__download_figma_images` for each screen node ID to download PNG screenshots to `docs/blueprint/screenshots/<feature-slug>/`. Pass all screen nodes in a single call:
+
+```
+mcp__figma__download_figma_images:
+  fileKey: <fileKey from index.md>
+  localPath: "docs/blueprint/screenshots/<feature-slug>"
+  nodes:
+    - nodeId: "1234:5678"
+      fileName: "<ScreenName>.png"
+    - nodeId: "2345:6789"
+      fileName: "<ScreenName2>.png"
+```
+
+If the call fails for any reason, apply the absolute rule above immediately — output `FIGMA_MCP_FAILED:` and stop. Use the downloaded images to verify your layout descriptions are accurate.
 
 ## Step 2b: Export assets
 
-Read the `fileKey` from `docs/blueprint/index.md` (the value on the `**Figma File Key:**` line).
-
-Scan the design context from Step 1 for **all** nodes the app needs as bundled files. Cast a wide net — over-exporting is better than leaving implementors without assets.
+The `fileKey` was already read in Step 1. Scan the design context from Step 1 for **all** nodes the app needs as bundled files. Cast a wide net — over-exporting is better than leaving implementors without assets.
 
 ### Classify each asset before downloading
 
 **CRITICAL rule — file extension must match node type:**
-Figma exports vector nodes as SVG regardless of the filename extension you pass. If you name a vector node `.png`, the tool saves SVG markup inside a `.png` file and React Native's `<Image>` will silently fail to render it. Always apply this rule:
+Always apply this rule when setting `fileName`:
 
-| Node is… | `fileName` extension | `imageRef` |
+| Node is… | `fileName` extension | Include `imageRef`? |
 |---|---|---|
-| Vector / BOOLEAN_OPERATION / path-based shape (logo, icon, illustration drawn in Figma) | `.svg` | omit |
-| Image fill — photo, bitmap, or raster texture (look for `imageRef` key in fill data) | `.png` | required — copy the `imageRef` value exactly |
-| FRAME or GROUP that mixes vector + raster | `.png` (rendered at scale) | omit |
+| Vector / BOOLEAN_OPERATION / path-based shape (logo, icon, illustration drawn in Figma) | `.svg` | No |
+| Image fill — photo, bitmap, or raster texture (look for `imageRef` key in fill data) | `.png` | Yes — copy the `imageRef` value exactly |
+| FRAME or GROUP that mixes vector + raster | `.png` (rendered at scale) | No |
 
 **How to identify node type from design context:**
 - `type: "VECTOR"` or `type: "BOOLEAN_OPERATION"` → always SVG
@@ -90,37 +109,34 @@ Figma exports vector nodes as SVG regardless of the filename extension you pass.
 - Name contains `logo`, `wordmark`, `splash`, `wave`, `illustration`, `hero` → inspect fills; if no imageRef, it is a vector → SVG
 - FRAME/GROUP acting as a background or card image with no imageRef → PNG (rendered)
 
-### Call `mcp__figma__download_figma_images`
+### Call `mcp__figma__download_figma_images` — one call for all asset nodes
 
-Make **two separate calls** — one for SVGs, one for PNGs — so scale only applies to the PNG batch:
+`download_figma_images` downloads all asset nodes in a single call directly to disk. No curl step needed.
 
 ```
-# Call 1 — SVG icons and vector assets (no pngScale needed)
-mcp__figma__download_figma_images:
-  fileKey: <fileKey from index.md>
-  localPath: "apps/mobile/assets/features/<feature-slug>"
-  nodes:
-    - nodeId: "2345:1111"
-      fileName: "icon-home.svg"
-    - nodeId: "2345:2222"
-      fileName: "vivistim-logo.svg"
-
-# Call 2 — Raster / rendered PNG assets
 mcp__figma__download_figma_images:
   fileKey: <fileKey from index.md>
   localPath: "apps/mobile/assets/features/<feature-slug>"
   pngScale: 3
   nodes:
-    # imageRef node (photo/bitmap fill):
+    # SVG vector asset — no imageRef
+    - nodeId: "2345:1111"
+      fileName: "icon-home.svg"
+    # PNG raster asset with imageRef fill
     - nodeId: "1234:5678"
       fileName: "provider-photo.png"
       imageRef: "<imageRef value from fill data>"
-    # rendered FRAME (no imageRef):
-    - nodeId: "1234:9999"
+    # PNG rendered frame — no imageRef
+    - nodeId: "3456:9012"
       fileName: "wave-background.png"
 ```
 
-Skip the SVG call if there are no vector assets; skip the PNG call if there are no raster assets.
+Create the output directory first:
+```bash
+mkdir -p apps/mobile/assets/features/<feature-slug>
+```
+
+Then make a single `download_figma_images` call with all asset nodes collected above. The tool writes files directly to `localPath` — no URLs, no curl.
 
 ### Validate downloads and fix extension mismatches
 
@@ -157,16 +173,24 @@ If no assets are found at all after the scan, write "No static assets required" 
 Document this in the flow spec so implementation agents know exactly how to consume each file:
 
 - **PNG** → `<Image source={require('../../assets/features/<slug>/name.png')} />`
-- **SVG** → must use `react-native-svg` + `react-native-svg-transformer`; import as a component:
+- **SVG** → requires `react-native-svg` + `react-native-svg-transformer` (not in base
+  project-setup install). Note in the flow spec if SVG assets are present — the
+  implementation agent must install them first:
+  ```bash
+  pnpm add react-native-svg
+  pnpm add -D react-native-svg-transformer
+  ```
+  Then import as a component:
   ```tsx
-  import LogoSvg from '../../assets/features/<slug>/vivistim-logo.svg'
+  import LogoSvg from '../../assets/features/<slug>/logo.svg'
   // usage: <LogoSvg width={120} height={40} />
   ```
-  Note in the flow spec if SVG assets are present so the implementation agent knows to verify the transformer is configured.
+  Also note that `metro.config.js` and `tsconfig.json` must be updated for the transformer
+  (the implementation agent should follow the `react-native-svg-transformer` README).
 
 ## Step 3: Analyze for React Native implementation
 
-IMPORTANT: This app is React Native (Expo managed workflow), NOT a web app. When describing patterns, always use React Native equivalents:
+IMPORTANT: This app is React Native (Expo), NOT a web app. The Expo workflow (managed vs bare) was determined during project-setup — do not assume managed. When describing patterns, always use React Native equivalents:
 
 | Web pattern | React Native equivalent |
 |---|---|
@@ -194,7 +218,7 @@ For safe areas:
 
 ## Output file
 
-Create: `docs/blueprint/flows/<feature-slug>.md`
+Update (overwrite) `docs/blueprint/flows/<feature-slug>.md` with the fully enriched spec. Start from the skeleton you read in the Inputs step — carry forward its structure, and replace inferred/TODO content with real Figma data. The enriched file must include everything the skeleton had, plus the full detail below.
 
 ```markdown
 # Feature Flow: <Feature Name>
@@ -308,9 +332,9 @@ List every static media asset exported for this feature. If none, write "No stat
 
 ## Step 4: Write tasks to docs/blueprint/tasks.md
 
-After the flow spec is complete, generate the feature task list and append it to `docs/blueprint/tasks.md`. Create the file if it does not exist.
+`docs/blueprint/tasks.md` was created by `design-discovery` with a top-level backlog list of feature slugs. Your job is to append the detailed per-feature task breakdown (Backend / Frontend / Assets) beneath that list. Do NOT modify the backlog list entries — only append.
 
-Before appending, check whether a section for this feature already exists to avoid duplicates:
+Before appending, check whether a detailed section for this feature already exists to avoid duplicates:
 ```bash
 grep -q "## Feature: <Flow Name>" docs/blueprint/tasks.md 2>/dev/null && echo "ALREADY_EXISTS" || echo "NOT_FOUND"
 ```
@@ -334,7 +358,8 @@ Append using this format:
 - [ ] (add/remove endpoints based on what the design actually requires)
 
 ### Frontend
-- [ ] Zustand slice: use<Feature>Store (state, actions, status)
+- [ ] TanStack Query hooks: use<Feature>Queries.ts (useQuery + useMutation via api wrapper)
+- [ ] Zustand UI slice: use<Feature>UIStore.ts (only if cross-screen UI state needed)
 - [ ] <ScreenName>Screen — <brief description>
 - [ ] <ScreenName>Screen — <brief description>
 - [ ] <SharedComponentName> component (if new shared component needed)
